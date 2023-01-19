@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+
+###  wyng-util-qubes
+###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
+###  Licensed under GNU General Public License v3. See file 'LICENSE'.
+
+
+import qubesadmin, sys, os, shutil, subprocess
+
+b2i = lambda b: int.from_bytes(b, byteorder="big")
+
+# Exit with simple message
+def x_it(code, text):
+    sys.stderr.write(text+"\n")
+    #cleanup()
+    sys.exit(code)
+
+
+if len(sys.argv) < 3 or sys.argv[1].lower() not in ("backup","restore"):
+    x_it(1. "Usage:\n"
+            "wyng-util-qubes backup <qube_name[/root]>\n"
+            "wyng-util-qubes restore <qube_name>[,qube_name]")
+
+if sys.hexversion < 0x3080000:
+    x_it(1, "Python ver. 3.8 or greater required.")
+
+# Root user required
+if os.getuid() > 0:
+    x_it(1, "Must be root user.")
+
+
+## CONSTANTS ##
+
+lvmvolgrp  = "qubes_dom0"                ; lvmpool  = "vm-pool"      ; lvmode   = True
+mvolname   = "wyng-qubes-metadata"       ; mvolpath = "/dev/"+lvmvolgrp+"/"+mvolname
+qubesvar   = "/var/lib/qubes/"           ; qubesxml = "qubes.xml"    ; fwfile   = "firewall.xml"
+tmpdir     = "/tmp/wyng-util-qubes"      ; tarpath  = tmpdir+"/qmeta.tgz"
+selected   = sys.argv[2:]                ; err_domains = []
+qdaemon = qubesadmin.Qubes().app         ; live_qubes = qdaemon.domains   
+
+if os.path.exists(tmpdir):   shutil.rmtree(tmpdir)
+os.makedirs(tmpdir)
+
+if sys.argv[1].lower() == "backup":
+
+    vols = []
+    for vm in (x for x in selected if x in live_qubes):
+        if vm == "dom0":
+            print("Skipping dom0.")
+            continue
+        vols.append("vm-"+vm+"-private")
+        if "template" not in live_qubes[vm].property_list():   vols.append("vm-"+vm+"-root")
+
+    #Enh: Use include_in_backups property
+    if not vols:   raise ValueError("Please supply a list of Qubes VMs to backup.")
+
+    ## Copy the Qubes metadata volume and add it to Wyng archive
+    os.cwd(qubesvar)
+    os.remove(tarpath)
+    subprocess.run(["tar", "-czf", tarpath, "qubes.xml", "appvms", "vm-templates",
+                    "--exclude=*img", check=True)
+    tarsize = os.path.getsize(tarpath)
+
+    ## Initialize metadata volume
+    if lvmode:
+        if not os.path.exists(mvolpath):
+            subprocess.run(["lvm", "lvcreate", "-prw", "-ay", "-kn", "-V", str(tarsize)+"b",
+                            mvolname, lvmvolgrp+"/"+lvmpool], check=True)
+        else:
+            subprocess.run(["lvm", "lvresize", "-L", str(tarsize)+"b", "-f", mvolpath], check=True)
+
+        subprocess.run(["blkdiscard", mvolpath], check=True)
+        subprocess.run(["dd", "if="+tarpath, "of="+mvolpath], check=True)
+    else:
+        raise NotImplementedError()
+        #cp tarpath ???
+
+    wyng_cmd = ["wyng", "-u", "send", mvolname] + vols
+    subprocess.run(wyng_cmd, check=True)
+
+
+elif sys.argv[1].lower() == "restore":
+    ## Restore Qubes VMs with settings
+    ## Currently assumes that qubes metadata volume has been restored using a
+    ## session ID matching the restored VM session ID.
+
+    if not selected:   raise ValueError("Please supply a list of Qubes VMs to restore.")
+
+    wyng_cmd = ["wyng", "-u", "receive", mvolname]
+    subprocess.run(wyng_cmd, check=True)
+    if not os.path.exists(mvolpath):   raise RuntimeError(mvolpath+" not found.")
+
+    os.cwd(tmpdir)
+    subprocess.run(["tar", "-xzf", mvolpath], check=True)
+    backups = qubesadmin.backup.core3.Core3Qubes(tmpdir+"/"+qubesxml).domains
+
+    #catch_signals()
+
+    templates = [x for x in backups if x.klass == "TemplateVM"]
+    for qube in templates + [x for x in backups if x not in templates]
+        target = qube.name
+        if target not in selected:   continue
+        if target == "dom0":
+            print("Skipping dom0.")
+            continue
+
+        ## create tmp qube
+        #while target := (qube.name+"-restore-"+hex(b2i(os.urandom(3)))) in live_qubes:   pass
+        if target in (x.name for x in live_qubes):
+            target_qube = live_qubes[target]
+            if not target_qube.is_halted():   target_qube.kill()
+        else:
+            target_qube = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
+                                        template=qube.template)
+
+        # Restore private volume
+        subprocess.run(["wyng", "-u", "receive", "vm-"+target+"-private"], check=True)
+        if qube.template is None:
+            # Restore template or standalone root volume
+            subprocess.run(["wyng", "-u", "receive", "vm-"+target+"-root"], check=True)
+
+        subdir = "vm-templates/" if qube.klass == "TemplateVM" else "appvms/"
+        for prop, pval in qube.properties.items():
+            if prop in ("dispid", "installed_by_rpm", "default_dispvm"):   continue
+            try:
+                setattr(target_qube, prop, pval)
+            except Exception as err:
+                print("Error setting %s.%s to %s: %s" % (qube.name, prop, pval, err))
+                err_domains.append((qube.name, target))
+        for prop, pval in qube.features.items():   target_qube.features[prop] = pval
+        for tag in qube.tags:   target_qube.tags.add(tag)
+        for bus in qube.devices:
+            for backend_domain, ident in vm.devices[bus]:
+                options = qube.devices[bus][(backend_domain, ident)]
+                assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
+                                                    ident=ident, options=options, persistent=True)
+                try:
+                    target_qube.devices[bus].attach(assignment)
+                except Exception as err:
+                    print("Error attaching device %s:%s to %s: %s" % (bus,ident,qube.name,err))
+                    err_domains.append((qube.name, target))
+        #Enh: Possibly remove or reset properties that are not in the backup metadata
+
+        if exists(subdir+qube.name+"/"+fwfile):
+            shutil.copyfile(subdir+qube.name+"/"+fwfile, qubesvar+subdir+target+"/"+fwfile)
+
+
+else:
+    print("Specify 'backup' or 'restore'.")
