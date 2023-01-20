@@ -6,8 +6,10 @@
 
 
 import qubesadmin, sys, os, shutil, subprocess
+from qubesadmin.backup.core3 import Core3Qubes
 
-b2i = lambda b: int.from_bytes(b, byteorder="big")
+b2i     = lambda b: int.from_bytes(b, byteorder="big")
+exists  = os.path.exists
 
 # Exit with simple message
 def x_it(code, text):
@@ -16,8 +18,10 @@ def x_it(code, text):
     sys.exit(code)
 
 
+print("wyng-util-qubes v0.1a rel 20230119")
+
 if len(sys.argv) < 3 or sys.argv[1].lower() not in ("backup","restore"):
-    x_it(1. "Usage:\n"
+    x_it(1, "Usage:\n"
             "wyng-util-qubes backup <qube_name[/root]>\n"
             "wyng-util-qubes restore <qube_name>[,qube_name]")
 
@@ -55,21 +59,20 @@ if sys.argv[1].lower() == "backup":
     if not vols:   raise ValueError("Please supply a list of Qubes VMs to backup.")
 
     ## Copy the Qubes metadata volume and add it to Wyng archive
-    os.cwd(qubesvar)
-    os.remove(tarpath)
-    subprocess.run(["tar", "-czf", tarpath, "qubes.xml", "appvms", "vm-templates",
-                    "--exclude=*img", check=True)
+    os.chdir(qubesvar)
+    subprocess.run(["tar", "-czf", tarpath, "--exclude=*img", "qubes.xml",
+                    "appvms", "vm-templates"], check=True)
     tarsize = os.path.getsize(tarpath)
 
     ## Initialize metadata volume
     if lvmode:
-        if not os.path.exists(mvolpath):
-            subprocess.run(["lvm", "lvcreate", "-prw", "-ay", "-kn", "-V", str(tarsize)+"b",
-                            mvolname, lvmvolgrp+"/"+lvmpool], check=True)
-        else:
-            subprocess.run(["lvm", "lvresize", "-L", str(tarsize)+"b", "-f", mvolpath], check=True)
+        if os.path.exists(mvolpath):
+            subprocess.run(["lvm", "lvremove", "-f", mvolpath], check=True)
 
-        subprocess.run(["blkdiscard", mvolpath], check=True)
+        subprocess.run(["lvm", "lvcreate", "-prw", "-ay", "-kn",
+                        "-V", str(tarsize//1024+1)+"K", "--thin",
+                        "-n", mvolname, lvmvolgrp+"/"+lvmpool], check=True)
+
         subprocess.run(["dd", "if="+tarpath, "of="+mvolpath], check=True)
     else:
         raise NotImplementedError()
@@ -81,8 +84,6 @@ if sys.argv[1].lower() == "backup":
 
 elif sys.argv[1].lower() == "restore":
     ## Restore Qubes VMs with settings
-    ## Currently assumes that qubes metadata volume has been restored using a
-    ## session ID matching the restored VM session ID.
 
     if not selected:   raise ValueError("Please supply a list of Qubes VMs to restore.")
 
@@ -90,14 +91,12 @@ elif sys.argv[1].lower() == "restore":
     subprocess.run(wyng_cmd, check=True)
     if not os.path.exists(mvolpath):   raise RuntimeError(mvolpath+" not found.")
 
-    os.cwd(tmpdir)
+    os.chdir(tmpdir)
     subprocess.run(["tar", "-xzf", mvolpath], check=True)
-    backups = qubesadmin.backup.core3.Core3Qubes(tmpdir+"/"+qubesxml).domains
+    backups = Core3Qubes(tmpdir+"/"+qubesxml).domains
 
-    #catch_signals()
-
-    templates = [x for x in backups if x.klass == "TemplateVM"]
-    for qube in templates + [x for x in backups if x not in templates]
+    templates = [x for x in backups.values() if x.klass == "TemplateVM"]
+    for qube in templates + [x for x in backups.values() if x not in templates]:
         target = qube.name
         if target not in selected:   continue
         if target == "dom0":
@@ -130,7 +129,7 @@ elif sys.argv[1].lower() == "restore":
         for prop, pval in qube.features.items():   target_qube.features[prop] = pval
         for tag in qube.tags:   target_qube.tags.add(tag)
         for bus in qube.devices:
-            for backend_domain, ident in vm.devices[bus]:
+            for backend_domain, ident in qube.devices[bus]:
                 options = qube.devices[bus][(backend_domain, ident)]
                 assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
                                                     ident=ident, options=options, persistent=True)
