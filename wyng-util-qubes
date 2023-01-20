@@ -18,12 +18,12 @@ def x_it(code, text):
     sys.exit(code)
 
 
-print("wyng-util-qubes v0.1a rel 20230119")
+print("wyng-util-qubes v0.1beta rel 20230120")
 
 if len(sys.argv) < 3 or sys.argv[1].lower() not in ("backup","restore"):
     x_it(1, "Usage:\n"
-            "wyng-util-qubes backup <qube_name[/root]>\n"
-            "wyng-util-qubes restore <qube_name>[,qube_name]")
+            "wyng-util-qubes backup <qube_name [qube_name...]>\n"
+            "wyng-util-qubes restore <qube_name [qube_name...]>")
 
 if sys.hexversion < 0x3080000:
     x_it(1, "Python ver. 3.8 or greater required.")
@@ -67,13 +67,13 @@ if sys.argv[1].lower() == "backup":
     ## Initialize metadata volume
     if lvmode:
         if os.path.exists(mvolpath):
-            subprocess.run(["lvm", "lvremove", "-f", mvolpath], check=True)
+            subprocess.run(["lvm", "lvremove", "-q", "-f", mvolpath], check=True)
 
-        subprocess.run(["lvm", "lvcreate", "-prw", "-ay", "-kn",
+        subprocess.run(["lvm", "lvcreate", "-q", "-prw", "-ay", "-kn",
                         "-V", str(tarsize//1024+1)+"K", "--thin",
                         "-n", mvolname, lvmvolgrp+"/"+lvmpool], check=True)
 
-        subprocess.run(["dd", "if="+tarpath, "of="+mvolpath], check=True)
+        subprocess.run(["dd", "if="+tarpath, "of="+mvolpath, "status=none"], check=True)
     else:
         raise NotImplementedError()
         #cp tarpath ???
@@ -87,7 +87,7 @@ elif sys.argv[1].lower() == "restore":
 
     if not selected:   raise ValueError("Please supply a list of Qubes VMs to restore.")
 
-    wyng_cmd = ["wyng", "-u", "receive", mvolname]
+    wyng_cmd = ["wyng", "-u", "--quiet", "receive", mvolname]
     subprocess.run(wyng_cmd, check=True)
     if not os.path.exists(mvolpath):   raise RuntimeError(mvolpath+" not found.")
 
@@ -103,31 +103,59 @@ elif sys.argv[1].lower() == "restore":
             print("Skipping dom0.")
             continue
 
-        ## create tmp qube
-        #while target := (qube.name+"-restore-"+hex(b2i(os.urandom(3)))) in live_qubes:   pass
+        # Find local qube or create one
         if target in (x.name for x in live_qubes):
             target_qube = live_qubes[target]
             if not target_qube.is_halted():   target_qube.kill()
         else:
             target_qube = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
-                                        template=qube.template)
+                                             template=qube.template)
+
 
         # Restore private volume
-        subprocess.run(["wyng", "-u", "receive", "vm-"+target+"-private"], check=True)
+        subprocess.run(["wyng", "-u", "--quiet", "--sparse-write",
+                        "receive", "vm-"+target+"-private"], check=True)
         if qube.template is None:
             # Restore template or standalone root volume
-            subprocess.run(["wyng", "-u", "receive", "vm-"+target+"-root"], check=True)
+            subprocess.run(["wyng", "-u", "--quiet", "--sparse-write",
+                            "receive", "vm-"+target+"-root"], check=True)
+
+
+        # Selectively restore qube properties
+        # Remove or reset properties that are not in the backup metadata
 
         subdir = "vm-templates/" if qube.klass == "TemplateVM" else "appvms/"
-        for prop, pval in qube.properties.items():
-            if prop in ("dispid", "installed_by_rpm", "default_dispvm"):   continue
-            try:
-                setattr(target_qube, prop, pval)
-            except Exception as err:
-                print("Error setting %s.%s to %s: %s" % (qube.name, prop, pval, err))
-                err_domains.append((qube.name, target))
+        for prop in set(qube.properties) | set(target_qube.property_list()):
+            if prop in ("dispid","installed_by_rpm","default_dispvm","qid","uuid","xid","klass",
+                        "template","name","label","backup_timestamp","stubdom_mem","stubdom_xid"):
+                continue
+
+            if prop in qube.properties:
+                pval = qube.properties[prop]
+                try:
+                    setattr(target_qube, prop, pval)
+                except Exception as err:
+                    print("Error setting %s.%s to %s: %s" % (qube.name, prop, pval, err))
+                    err_domains.append((qube.name, target))
+            elif prop not in ("label","name","template"):
+                try:
+                    setattr(target_qube, prop, target_qube.property_get_default(prop))
+                except Exception as err:
+                    if "cannot be set" not in repr(err):
+                        print(err)   ; err_domains.append((qube.name, target))
+
         for prop, pval in qube.features.items():   target_qube.features[prop] = pval
+        for prop in (x for x in target_qube.features if x not in qube.features):
+            del(target_qube.features[prop])
+
         for tag in qube.tags:   target_qube.tags.add(tag)
+        for tag in (x for x in target_qube.tags if x not in qube.tags):
+            target_qube.tags.remove(tag)
+
+        for bus in target_qube.devices:
+            busobj  = target_qube.devices[bus]
+            devlist = list(busobj.assignments())
+            for dev in devlist:   busobj.detach(dev)
         for bus in qube.devices:
             for backend_domain, ident in qube.devices[bus]:
                 options = qube.devices[bus][(backend_domain, ident)]
@@ -138,10 +166,11 @@ elif sys.argv[1].lower() == "restore":
                 except Exception as err:
                     print("Error attaching device %s:%s to %s: %s" % (bus,ident,qube.name,err))
                     err_domains.append((qube.name, target))
-        #Enh: Possibly remove or reset properties that are not in the backup metadata
 
         if exists(subdir+qube.name+"/"+fwfile):
             shutil.copyfile(subdir+qube.name+"/"+fwfile, qubesvar+subdir+target+"/"+fwfile)
+        elif exists(qubesvar+subdir+target+"/"+fwfile):
+            os.remove(qubesvar+subdir+target+"/"+fwfile)
 
 
 else:
