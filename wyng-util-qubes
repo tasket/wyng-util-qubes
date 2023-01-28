@@ -78,7 +78,7 @@ if sys.argv[1].lower() == "backup":
         raise NotImplementedError()
         #cp tarpath ???
 
-    wyng_cmd = ["wyng", "-u", "send", mvolname] + vols
+    wyng_cmd = ["wyng", "-u", "-d", "send", mvolname] + vols
     subprocess.run(wyng_cmd, check=True)
 
 

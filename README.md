@@ -1,14 +1,37 @@
 __wyng-util-qubes__
 
-Wrapper for Wyng backup system that saves and restores both data and settings for Qubes VMs.
+Wrapper for [Wyng](https://github.com/tasket/wyng-backup) backup system that saves and restores both data and settings for Qubes VMs.
 
-Uses a best-effort restoration process for restoring VM settings, which is a thorny problem on Qubes OS.
+To address the thorny issue of restoring VM settings on Qubes OS, a best-effort process is used for
+individually setting, re-setting or removing each value depending on whether the property exists
+in the backup and whether its writable and has a default value according to Qubes.  This differs
+from the `qubes-backup` method which always creates new VMs when restoring, often resulting in
+extra, unwanted VMs which don't connect to each other or reference appropriate templates as
+the user originally intended.
+
+For each qube, both private and root volumes are backed up if the qube type is
+either template or standalone.  Otherwise, the backup will include the private volume.
+
+Requirements:
+
+* Qubes OS 4.1 in a thin-LVM configuration
+* wyng-backup v0.3 or later
 
 Usage:
 ```
     wyng-util-qubes backup <qube_name [qube_name...]>
     wyng-util-qubes restore <qube_name [qube_name...]>
 ```
+
+Limitations:
+
+Currently, restore only retrieves the latest data from the default Wyng archive and dom0 backup is not
+supported. During restore, encrypted archives will prompt the user multiple times for a passphrase as
+Wyng doesn't yet have an authentication buffering ability.
+
+Apart from data, which is restored verbatim, restoration of VM settings may be imperfect.  There is currently
+no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing
+VMs with matching names _will be overwritten._
 
 License:  GPL3
 
@@ -27,3 +50,4 @@ To Do:
 * Archive selection
 * List archive contents
 * Use full sparse mode
+* A maintenance function to support regular periodic 'monitor' and 'prune' functions of the archive
