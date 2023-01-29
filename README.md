@@ -15,7 +15,7 @@ Usage:
     wyng-util-qubes prune [--autoprune=opt] [--session=YYYYMMDD-HHMMSS] [qube_name qube_name...]
     wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_name qube_name...]
 
-    ```
+```
 
 
 Notes:
