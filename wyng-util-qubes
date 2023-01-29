@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.2alpha rel 20230128")
+print("wyng-util-qubes v0.2alpha rel 20230128.2")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse
 from qubesadmin.backup.core3 import Core3Qubes
@@ -28,9 +28,11 @@ def get_wyng_directory(pass_agent):
     # wsessionqubes :  session -> qube_name
     # wvolumemap    :  volume_name -> session
     # qube_wvolmap  :  qube_name -> volume_suffix ('root' or 'private')
+
     pass_agent = max(pass_agent, 5 if options.action not in ("list","backup") else 0)
-    wyng_cmd = ["wyng", "-u", "--verbose", "--all", "--pass-agent="+str(pass_agent), "list"]
     wvolsessionmap, wvolumemap, qube_wvolmap = {}, {}, {}   ; volname = qubename = None
+    wyng_cmd = ["wyng", "-u", "--verbose", "--all", "--pass-agent="+str(pass_agent), "list"]
+    if options.metadir: wyng_cmd.insert(1, "--meta-dir="+options.metadir)
     for ln1 in subprocess.check_output(wyng_cmd, text=True).splitlines():
         if ln1.startswith("Sessions for volume"):
             ln2 = ln1.split("'")
@@ -85,8 +87,9 @@ parser.add_argument("--all-before", dest="allbefore", action="store_true", defau
                     help="Select all sessions before --session date-time.")
 parser.add_argument("--pass-agent", type=int, default=0,
                     help="Minutes to retain passphrase (0)")
-parser.add_argument("--vgpool", default="qubes_dom0/vm-pool",
-                    help="Override volume group / pool")
+parser.add_argument("--local", default="qubes_dom0/vm-pool",
+                    help="Override qubes_dom0/vm-pool local storage default")
+parser.add_argument("--meta-dir", dest="metadir", default="", help="Use alternate metadata path")
 parser.add_argument("volumes", nargs="*")
 options = parser.parse_args()    ; options.action = options.action.lower()
 
@@ -98,7 +101,7 @@ options = parser.parse_args()    ; options.action = options.action.lower()
 
 ## CONSTANTS / GLOBALS ##
 
-lvmvolgrp, lvmpool = options.vgpool.split("/")         ; lvmode = True
+lvmvolgrp, lvmpool = options.local.split("/")         ; lvmode = True
 mvolname   = "wyng-qubes-metadata"     ; mvolpath = "/dev/"+lvmvolgrp+"/"+mvolname
 qubesvar   = "/var/lib/qubes/"         ; qubesxml = "qubes.xml"    ; fwfile = "firewall.xml"
 tmpdir     = "/tmp/wyng-util-qubes"    ; tarpath  = tmpdir+"/qmeta.tgz"
@@ -150,7 +153,8 @@ if options.action == "backup":
         #cp tarpath ???
 
     wyng_cmd = ["wyng", "-u", "--pass-agent="+str(pass_agent), "send", mvolname] + vols
-    if options.dedup:  wyng_cmd.insert(1, "-d")
+    if options.dedup:   wyng_cmd.insert(1, "-d")
+    if options.metadir: wyng_cmd.insert(1, "--meta-dir="+options.metadir)
     subprocess.run(wyng_cmd, check=True)
 
 
@@ -164,6 +168,7 @@ elif options.action == "restore":
     pa_required = max(pass_agent, 5)
     wyng_cmd = ["wyng", "-u", "--quiet", "--pass-agent="+str(pa_required), "--save-to="+tarpath,
                 "--session="+options.session, "receive", mvolname]
+    if options.metadir: wyng_cmd.insert(1, "--meta-dir="+options.metadir)
     subprocess.run(wyng_cmd, check=True)
     if not os.path.exists(mvolpath):   raise RuntimeError(mvolpath+" not found.")
 
@@ -207,6 +212,7 @@ elif options.action == "restore":
     #Enh: allow restoring incomplete set of data
     wyng_cmd = ["wyng", "-u", "--sparse-write", "--pass-agent="+str(pass_agent),
                 "--session="+options.session, "receive"] + lvolumes
+    if options.metadir: wyng_cmd.insert(1, "--meta-dir="+options.metadir)
     p = subprocess.run(wyng_cmd, text=True, stderr=subprocess.PIPE)
     if p.returncode == 2:
         errln = [x.partition("volumes(s)") for x in p.stdout.splitlines() if "volumes(s):" in x]
