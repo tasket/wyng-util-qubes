@@ -11,11 +11,12 @@ A wrapper for [Wyng](https://github.com/tasket/wyng-backup) backup system that s
 
 ### Command usage
 ```
- wyng-util-qubes backup [--dedup] [-i] <qube_name [qube_name...]>
- wyng-util-qubes restore --session=YYYYMMDD-HHMMSS <qube_name [qube_name...]>
+ wyng-util-qubes backup [--dedup] [-i] [qube_name...]
+ wyng-util-qubes restore --session=YYYYMMDD-HHMMSS [qube_name...]
  wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_name...]
- wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_name qube_name...]
- wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_name qube_name...]
+ wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_name...]
+ wyng-util-qubes delete <qube_name>
+ wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_name...]
 ```
 
 ### Command summary
@@ -41,7 +42,9 @@ list               | Show contents of archive
 --exclude=qube_name    | Exclude a qube from backup by name.
 --pass-agent=n         | Minutes to remember auth/decryption passphrase. (default: 0)
 --local=_vg/pool_      | Volume group + pool containing local volumes. (restore)
+--volume=volname       | Include a specific disk volume by name (not qube name)
 --meta-dir=_path_      | Use a different metadata dir than the default.
+-w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
 
 
 ### Notes
@@ -77,6 +80,8 @@ Warranty:  None.  Use at your own risk!
 
 
 ### History
+
+2023-02-10: v0.4b Beta. Adds option passthrough and delete command.
 
 2023-02-03: v0.4a Adds verify & prune commands plus selection options for vms and sessions
 

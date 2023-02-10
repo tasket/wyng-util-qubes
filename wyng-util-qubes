@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.3beta rel 20230210")
+print("wyng-util-qubes v0.4beta rel 20230210")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse
 from qubesadmin.backup.core3 import Core3Qubes
