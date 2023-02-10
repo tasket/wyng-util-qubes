@@ -9,16 +9,16 @@ A wrapper for [Wyng](https://github.com/tasket/wyng-backup) backup system that s
 * wyng-backup v0.4alpha2
 
 
-### Command Usage
+### Command usage
 ```
-    wyng-util-qubes backup [--dedup] [-i] <qube_name [qube_name...]>
-    wyng-util-qubes restore --session=YYYYMMDD-HHMMSS <qube_name [qube_name...]>
-    wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_name...]
-    wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_name qube_name...]
-    wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_name qube_name...]
+ wyng-util-qubes backup [--dedup] [-i] <qube_name [qube_name...]>
+ wyng-util-qubes restore --session=YYYYMMDD-HHMMSS <qube_name [qube_name...]>
+ wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_name...]
+ wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_name qube_name...]
+ wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_name qube_name...]
 ```
 
-### Command Summary
+### Command summary
 | _Command_                     | _Description_
 |-------------------------------|--------------
 backup             | Begin a backup session to store Qubes VMs in the Wyng archive
@@ -28,7 +28,7 @@ prune              | Remove older backup sessions from archive
 list               | Show contents of archive
 
 
-### Parameters/Options Summary
+### Parameters/Options summary
 
 | _Option_                      | _Description_
 |-------------------------------|--------------
