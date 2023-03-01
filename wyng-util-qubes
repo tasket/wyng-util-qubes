@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.4beta rel 20230210")
+print("wyng-util-qubes v0.4beta rel 20230211")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse
 from qubesadmin.backup.core3 import Core3Qubes
@@ -42,10 +42,7 @@ def get_wyng_directory(pass_agent):
                 volname  = ln2[1]    ; wvolumemap[volname] = []
         elif len(ln1)==15 and ln1[8]=="-" and ln1[:8].isnumeric() and volname:
             wvolumemap[volname].append(ln1)
-            if ln1 not in wvolsessionmap:
-                wvolsessionmap[ln1] = set(volname)
-            else:
-                wvolsessionmap[ln1].add(volname)
+            wvolsessionmap.setdefault(ln1, set()).add(volname)
     wsessionqubes = {}
     for ses,vols in wvolsessionmap.items():
         if s := set((get_qubename(x)[0] for x in vols if x.endswith(("-root","-private")))):
@@ -54,9 +51,7 @@ def get_wyng_directory(pass_agent):
     # make qube_wvolmap...
     for vol, ses in ((x,s) for x,y in wvolumemap.items() for s in y if x.startswith("vm-")):
         qubename, suffix = get_qubename(vol)
-        if qubename not in qube_wvolmap:   qube_wvolmap[qubename] = {}
-        if ses not in qube_wvolmap[qubename]:   qube_wvolmap[qubename][ses] = set()
-        qube_wvolmap[qubename][ses].add(suffix)
+        qube_wvolmap.setdefault(qubename, dict()).setdefault(ses, set()).add(suffix)
 
     return wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap
 
@@ -161,8 +156,8 @@ if options.action == "backup":
         vols.append("vm-"+vm+"-private")
         if "template" not in live_qubes[vm].property_list():   vols.append("vm-"+vm+"-root")
 
-    #Enh: Use include_in_backups property
-    if not vols:   raise ValueError("Please supply a list of Qubes VMs to backup.")
+    vols += options.volume
+    if not vols:   raise ValueError("Please supply a list of Qubes VMs or --volume to backup.")
 
     ## Copy the Qubes metadata volume and add it to Wyng archive
     os.chdir(qubesvar)
@@ -186,10 +181,10 @@ if options.action == "backup":
         raise NotImplementedError()
         #cp tarpath ???
 
-    wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent), "send", mvolname] \
-                + vols + options.volume
+    wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent), "send", mvolname] + vols
     if options.autoprune:  wyng_cmd.insert(0, "--autoprune="+options.autoprune)
     if options.dedup:      wyng_cmd.insert(0, "-d")
+    print(wyng_cmd) ####
     subprocess.run(["wyng"]+wyng_cmd, check=True)
 
 
