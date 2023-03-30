@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.4beta rel 20230211")
+print("wyng-util-qubes v0.4beta rel 20230330")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse
 from qubesadmin.backup.core3 import Core3Qubes
@@ -62,7 +62,6 @@ def get_qubes_metadata(session):
     wyng_cmd = w_options + ["-u", "--quiet", "--pass-agent="+str(pa_required),
                             "--save-to="+tarpath, "--session="+session, "receive", mvolname]
     subprocess.run(["wyng"]+wyng_cmd, check=True)
-    if not os.path.exists(mvolpath):   raise RuntimeError(mvolpath+" not found.")
 
     #Enh: get archive listing and check volume presence vs selected qube list
     subprocess.run(["tar", "-xzf", tarpath], cwd=tmpdir, check=True)
@@ -184,7 +183,6 @@ if options.action == "backup":
     wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent), "send", mvolname] + vols
     if options.autoprune:  wyng_cmd.insert(0, "--autoprune="+options.autoprune)
     if options.dedup:      wyng_cmd.insert(0, "-d")
-    print(wyng_cmd) ####
     subprocess.run(["wyng"]+wyng_cmd, check=True)
 
 
@@ -194,7 +192,7 @@ elif options.action == "restore":
     if not options.session:
         raise ValueError("Please specify a session to restore.")
 
-    backups  = get_qubes_metadata()
+    backups  = get_qubes_metadata(options.session)
     selected = set(selected or wsessionqubes[options.session]) - set(options.exclude)
     os.chdir(tmpdir)
 
