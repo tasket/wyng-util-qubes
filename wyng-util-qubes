@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.4beta rel 20230330")
+print("wyng-util-qubes v0.5beta rel 20230716")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse
 from qubesadmin.backup.core3 import Core3Qubes
@@ -25,41 +25,41 @@ def x_it(code, text):
 
 
 # Get archive directory
-def get_wyng_directory(pass_agent):
+def get_wyng_directory(authmin):
     # Parse full vol/session list into lookup tables...
     # wvolsessionmap:  session -> volume_name
     # wsessionqubes :  session -> qube_name
     # wvolumemap    :  volume_name -> session
     # qube_wvolmap  :  (dict)qube_name -> (dict)session -> (set)volume_suffix ('root' or 'private')
 
-    pass_agent = max(pass_agent, 5 if options.action not in ("list","backup") else 0)
+    authmin = max(authmin, 5 if options.action not in ("list","backup") else 0)
     wvolsessionmap, wvolumemap, qube_wvolmap = {}, {}, {}   ; volname = qubename = None
-    wyng_cmd = w_options + ["-u", "--verbose", "--all", "--pass-agent="+str(pass_agent), "list"]
-    for ln1 in subprocess.check_output(["wyng"]+wyng_cmd, text=True).splitlines():
-        if ln1.startswith("Sessions for volume"):
-            ln2 = ln1.split("'")
-            if len(ln2)>2 and ln2[-1] == ":":
-                volname  = ln2[1]    ; wvolumemap[volname] = []
-        elif len(ln1)==15 and ln1[8]=="-" and ln1[:8].isnumeric() and volname:
-            wvolumemap[volname].append(ln1)
-            wvolsessionmap.setdefault(ln1, set()).add(volname)
+    wyng_cmd = w_options + ["--json", "--authmin="+str(authmin), "list"]
+    jdata = json.loads((j := subprocess.check_output(["wyng"]+wyng_cmd, text=True))[j.find("{"):])
+
+    for volname, sname in ((vk,sk) for vk,vv in jdata["volumes"].items() for sk in vv["sessions"]):
+        wvolumemap.setdefault(volname, list()).append(sname)
+        wvolsessionmap.setdefault(sname, set()).add(volname)
+
     wsessionqubes = {}
     for ses,vols in wvolsessionmap.items():
-        if s := set((get_qubename(x)[0] for x in vols if x.endswith(("-root","-private")))):
+        if s := set((get_qubename(x)[0] for x in vols
+                     if x.endswith(("-root","-private","/root.img","/private.img")))):
             wsessionqubes[ses] = s
 
     # make qube_wvolmap...
-    for vol, ses in ((x,s) for x,y in wvolumemap.items() for s in y if x.startswith("vm-")):
+    for vol, ses in ((x,s) for x,y in wvolumemap.items() for s in y 
+                     if x.startswith("vm-","appvms/","vm-templates/")):
         qubename, suffix = get_qubename(vol)
         qube_wvolmap.setdefault(qubename, dict()).setdefault(ses, set()).add(suffix)
 
-    return wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap
+    return jdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap
 
 
 def get_qubes_metadata(session):
     # Receive metadata
-    pa_required = max(pass_agent, 5)
-    wyng_cmd = w_options + ["-u", "--quiet", "--pass-agent="+str(pa_required),
+    pa_required = max(authmin, 5)
+    wyng_cmd = w_options + ["-u", "--quiet", "--authmin="+str(pa_required),
                             "--save-to="+tarpath, "--session="+session, "receive", mvolname]
     subprocess.run(["wyng"]+wyng_cmd, check=True)
 
@@ -110,8 +110,8 @@ parser.add_argument("--autoprune", default=None,
                     help="Automatic pruning: off/on/min/full. (backup, prune)")
 parser.add_argument("--all-before", dest="allbefore", action="store_true", default=False,
                     help="Select all sessions before --session date-time.")
-parser.add_argument("--pass-agent", type=int, default=0,
-                    help="Minutes to retain passphrase.")
+parser.add_argument("--authmin", type=int, default=0,
+                    help="Minutes to remember authentication.")
 parser.add_argument("--local", default="qubes_dom0/vm-pool",
                     help="Override qubes_dom0/vm-pool local storage default.")
 parser.add_argument("-w", dest="wyngopt", action="append", default=[],
@@ -127,7 +127,7 @@ lvmvolgrp, lvmpool = options.local.split("/")         ; lvmode = True
 mvolname   = "wyng-qubes-metadata"     ; mvolpath   = "/dev/"+lvmvolgrp+"/"+mvolname
 qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"    ; fwfile = "firewall.xml"
 tmpdir     = "/tmp/wyng-util-qubes"    ; tarpath    = tmpdir+"/qmeta.tgz"
-err_domains= []                        ; pass_agent = options.pass_agent
+err_domains= []                        ; authmin    = options.authmin
 qdaemon    = qubesadmin.Qubes().app    ; live_qubes = qdaemon.domains   
 selected   = options.qubenames
 
@@ -139,8 +139,7 @@ if options.metadir:    w_options.append("--meta-dir="+options.metadir)
 w_options.extend(["--"+x for x in options.wyngopt])
 
 
-if options.action != "backup":
-    wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap = get_wyng_directory(pass_agent)
+jdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap = get_wyng_directory(authmin)
 
 
 # Process Actions
@@ -180,7 +179,7 @@ if options.action == "backup":
         raise NotImplementedError()
         #cp tarpath ???
 
-    wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent), "send", mvolname] + vols
+    wyng_cmd = w_options + ["-u", "--authmin="+str(authmin), "send", mvolname] + vols
     if options.autoprune:  wyng_cmd.insert(0, "--autoprune="+options.autoprune)
     if options.dedup:      wyng_cmd.insert(0, "-d")
     subprocess.run(["wyng"]+wyng_cmd, check=True)
@@ -231,7 +230,7 @@ elif options.action == "restore":
 
     # Restore data volumes
     #Enh: allow restoring incomplete set of data
-    wyng_cmd = w_options + ["-u", "--sparse-write", "--pass-agent="+str(pass_agent),
+    wyng_cmd = w_options + ["-u", "--sparse-write", "--authmin="+str(authmin),
                 "--session="+options.session, "receive"] + lvolumes + options.volume
     p = subprocess.run(["wyng"]+wyng_cmd, text=True, stderr=subprocess.PIPE)
     if p.returncode == 2:
@@ -308,7 +307,7 @@ elif options.action == "verify":
                                         for ses,suflst in ses_d.items() for suffix in suflst
                                         if vm in selected and ses==options.session]
 
-    wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent),
+    wyng_cmd = w_options + ["-u", "--authmin="+str(authmin),
                 "--session="+options.session, "verify"] + [mvolname] + lvolumes + options.volume
     p = subprocess.run(["wyng"]+wyng_cmd, text=True, stderr=subprocess.PIPE)
     if p.returncode == 2:
@@ -329,7 +328,7 @@ elif options.action == "prune":
                                         for ses,suflst in ses_d.items() for suffix in suflst
                                         if vm in selected and ses==options.session]
 
-    wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent),
+    wyng_cmd = w_options + ["-u", "--authmin="+str(authmin),
                 "prune"] + lvolumes + options.volume
     if options.session: wyng_cmd.insert(0, "--session="+options.session)
     if options.allbefore: wyng_cmd.insert(0, "--all-before")
@@ -345,7 +344,7 @@ elif options.action == "delete":
                                         for ses,suflst in ses_d.items() for suffix in suflst
                                         if vm in selected]
     for vol in lvolumes + options.volume:
-        wyng_cmd = w_options + ["-u", "--pass-agent="+str(pass_agent),
+        wyng_cmd = w_options + ["-u", "--authmin="+str(authmin),
                     "delete", vol]
         p = subprocess.run(["wyng"]+wyng_cmd, check=True)
 
