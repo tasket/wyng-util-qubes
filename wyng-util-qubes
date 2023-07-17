@@ -5,9 +5,9 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.5beta rel 20230716")
+print("wyng-util-qubes v0.5beta rel 20230717")
 
-import qubesadmin, sys, os, shutil, subprocess, argparse
+import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
 
 exists  = os.path.exists
