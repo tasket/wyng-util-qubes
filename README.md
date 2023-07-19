@@ -6,7 +6,7 @@ A wrapper for [Wyng](https://github.com/tasket/wyng-backup) backup system that s
 ### Requirements
 
 * Qubes OS 4.1 in a thin-LVM configuration
-* wyng-backup v0.4alpha2
+* wyng-backup v0.8beta
 
 
 ### Command usage
@@ -40,7 +40,6 @@ list               | Show contents of archive
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
 --autoprune=off        | Automatic pruning by calendar date. _(experimental)_
 --exclude=qube_name    | Exclude a qube from backup by name.
---pass-agent=n         | Minutes to remember auth/decryption passphrase. (default: 0)
 --local=_vg/pool_      | Volume group + pool containing local volumes. (restore)
 --volume=volname       | Include a specific disk volume by name (not qube name)
 --meta-dir=_path_      | Use a different metadata dir than the default.
@@ -80,6 +79,8 @@ Warranty:  None.  Use at your own risk!
 
 
 ### History
+
+2023-07-16: v0.5b Works with Wyng v0.8beta.
 
 2023-02-10: v0.4b Beta. Adds option passthrough and delete command.
 
