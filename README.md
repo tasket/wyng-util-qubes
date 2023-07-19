@@ -42,6 +42,7 @@ list               | Show contents of archive
 --exclude=qube_name    | Exclude a qube from backup by name.
 --local=_vg/pool_      | Volume group + pool containing local volumes. (restore)
 --volume=volname       | Include a specific disk volume by name (not qube name)
+--unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
 
@@ -80,7 +81,7 @@ Warranty:  None.  Use at your own risk!
 
 ### History
 
-2023-07-16: v0.5b Works with Wyng v0.8beta.
+2023-07-19: v0.7b Works with Wyng v0.8beta.
 
 2023-02-10: v0.4b Beta. Adds option passthrough and delete command.
 

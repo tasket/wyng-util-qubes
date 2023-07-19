@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.7beta rel 20230718")
+print("wyng-util-qubes v0.7beta rel 20230719")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
@@ -68,7 +68,7 @@ def get_qubes_metadata(session):
 
 def get_qubename_parts(n):
     if n.startswith("vm-") and n.endswith(("-root","-private")):
-        return ("vm",) + n.partition("vm-")[-1].rsplit("-",maxsplit=1)
+        return ["vm"] + n.partition("vm-")[-1].rsplit("-",maxsplit=1)
     elif n.startswith(("appvms/","vm-templates/")) and n.endswith(("/root.img","/private.img")):
         return ((t := n.split("/"))[0], "/".join(t[1:-1]), t[-1])
     else:
@@ -227,12 +227,13 @@ elif options.action == "restore":
         lvolumes.append("vm-"+target+"-private") ####
         if target in templates:   lvolumes.append("vm-"+target+"-root") ####
 
-    print("Warning:  Restoring to existing VMs will overwrite them.")
-    if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
+    if not options.unattended:
+        print("Warning:  Restoring to existing VMs will overwrite them.")
+        if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     # Restore data volumes
     #Enh: allow restoring incomplete set of data
-    wyng_cmd = w_options + ["--sparse-write",
+    wyng_cmd = w_options + ["-u", "--sparse-write",
                 "--session="+options.session, "receive"] + lvolumes + options.volume
     p = subprocess.run(["wyng"]+wyng_cmd, text=True, stderr=subprocess.PIPE)
     if p.returncode == 2:
