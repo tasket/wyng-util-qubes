@@ -26,6 +26,7 @@ backup             | Begin a backup session to store Qubes VMs in the Wyng archi
 restore            | Restore Qubes VMs from the Wyng archive
 verify             | Verify archive data integrity
 prune              | Remove older backup sessions from archive
+delete             | Remove VMs from the Wyng archive
 list               | Show contents of archive
 
 
@@ -33,19 +34,39 @@ list               | Show contents of archive
 
 | _Option_                      | _Description_
 |-------------------------------|--------------
---includes             | Select all Qubes VMs marked as "include in backups". (backup)
+--includes, -i         | Select all Qubes VMs marked as "include in backups". (backup)
 --exclude=qube_name    | Exclude a specific VM from the operation (backup, restore, verify
 --dedup, -d            | Use deduplication. (backup)
 --session=_date-time[,date-time]_ | Select a session or session range by date-time or tag (restore, list, prune).
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
 --autoprune=off        | Automatic pruning by calendar date. _(experimental)_
 --exclude=qube_name    | Exclude a qube from backup by name.
---local=_vg/pool_      | Volume group + pool containing local volumes. (restore)
+--dest=_URL_           | URL location of archive.
+--pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (backup, restore)
+--pool-info            | Show local disk storage (list)
+--local=_vg/pool_      | Deprecated. Use --pool instead.
 --volume=volname       | Include a specific disk volume by name (not qube name)
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
 
+
+### Examples
+
+```
+$ sudo wyng-util-qubes list --pool-info
+wyng-util-qubes v0.8beta
+
+Qubes local storage pools:
+ varlibqubes             : file-reflink, /var/lib/qubes
+ vm-pool                 : thin_lvm, qubes_dom0/vm-pool
+
+$ # Make wyng backups of the VMs _work_ and _personal_
+$ sudo wyng-util-qubes backup work personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
+
+$ # Restore VM _personal_ from a wyng archive
+$ sudo wyng-util-qubes restore personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
+```
 
 ### Notes
 
