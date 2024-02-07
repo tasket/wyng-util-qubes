@@ -33,7 +33,7 @@ list               | Show contents of archive
 
 | _Option_                      | _Description_
 |-------------------------------|--------------
---includes             | Select all Qubes VMs marked as "include in backups". (backup)
+--includes, -i             | Select all Qubes VMs marked as "include in backups". (backup)
 --exclude=qube_name    | Exclude a specific VM from the operation (backup, restore, verify
 --dedup, -d            | Use deduplication. (backup)
 --session=_date-time[,date-time]_ | Select a session or session range by date-time or tag (restore, list, prune).
