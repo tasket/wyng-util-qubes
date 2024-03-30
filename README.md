@@ -10,9 +10,12 @@ A wrapper for [Wyng](https://github.com/tasket/wyng-backup) backup system that s
 
 
 ### Command usage
+
+__wyng-util-qubes__ is run in the Admin VM (dom0):
+
 ```
- wyng-util-qubes backup [--dedup] [-i] [qube_name...]
- wyng-util-qubes restore --session=YYYYMMDD-HHMMSS [qube_name...]
+ wyng-util-qubes backup [--dedup] [-i] [--pool=poolname] [qube_name...]
+ wyng-util-qubes restore --session=YYYYMMDD-HHMMSS [--pool=poolname] [qube_name...]
  wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_name...]
  wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_name...]
  wyng-util-qubes delete <qube_name>
@@ -76,6 +79,22 @@ $ # Restore VM _personal_ from a wyng archive
 $ sudo wyng-util-qubes restore personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
 
 ```
+
+The above examples show the creation and use of an archive named 'laptop3.backup' located in
+the local '/mnt/backups' path.  For non-local archives, use one of the other URL types supported
+by Wyng, such as 'qubes://' for backing up to a VM filesystem, or 'qubes-ssh://' for backing up
+to remote via an ssh-equipped VM...
+
+```
+$ sudo wyng arch-init --dest=qubes://sys-backup/mnt/backups/laptop3.backup
+
+$ sudo wyng arch-init --dest=qubes-ssh://sys-backup:user@192.168.1.10/mnt/backups/laptop3.backup
+
+```
+
+Use of the `--pool` is option, but should be used if you've setup any non-default Qubes pools,
+i.e. other than the one named 'vm-pool'.
+
 
 ### Notes
 
