@@ -56,7 +56,7 @@ list               | Show contents of archive
 ```
 
 $ # Start by creating a fresh Wyng archive:
-$ sudo wyng init --dest=file:/mnt/backups/laptop3.backup
+$ sudo wyng arch-init --dest=file:/mnt/backups/laptop3.backup
 
 
 $ # Show Qubes local storage
