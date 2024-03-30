@@ -54,6 +54,12 @@ list               | Show contents of archive
 ### Examples
 
 ```
+
+$ # Start by creating a fresh Wyng archive:
+$ sudo wyng init --dest=file:/mnt/backups/laptop3.backup
+
+
+$ # Show Qubes local storage
 $ sudo wyng-util-qubes list --pool-info
 wyng-util-qubes v0.8beta
 
@@ -61,11 +67,14 @@ Qubes local storage pools:
  varlibqubes             : file-reflink, /var/lib/qubes
  vm-pool                 : thin_lvm, qubes_dom0/vm-pool
 
+ 
 $ # Make wyng backups of the VMs _work_ and _personal_
 $ sudo wyng-util-qubes backup work personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
 
+
 $ # Restore VM _personal_ from a wyng archive
 $ sudo wyng-util-qubes restore personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
+
 ```
 
 ### Notes
