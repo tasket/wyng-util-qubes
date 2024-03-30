@@ -92,7 +92,7 @@ $ sudo wyng arch-init --dest=qubes-ssh://sys-backup:user@192.168.1.10/mnt/backup
 
 ```
 
-Use of the `--pool` is option, but should be used if you've setup any non-default Qubes pools,
+Use of `--pool` is optional, but should be used if you've setup any non-default Qubes pools,
 i.e. other than the one named 'vm-pool'.
 
 
