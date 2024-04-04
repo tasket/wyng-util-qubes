@@ -1,11 +1,12 @@
 ### __wyng-util-qubes__
 
-A wrapper for [Wyng](https://github.com/tasket/wyng-backup) backup system that saves and restores both data and settings for Qubes VMs.
+A wrapper for the [Wyng](https://github.com/tasket/wyng-backup) backup system that saves and
+restores both data and settings for Qubes VMs.
 
 
 ### Requirements
 
-* Qubes OS 4.1 in a thin-LVM configuration
+* Qubes OS 4.2 in a thin-LVM configuration
 * wyng-backup v0.8beta
 
 
@@ -25,7 +26,7 @@ __wyng-util-qubes__ is run in the Admin VM (dom0):
 ### Command summary
 | _Command_                     | _Description_
 |-------------------------------|--------------
-backup             | Begin a backup session to store Qubes VMs in the Wyng archive
+backup             | Store Qubes VMs in the Wyng archive as a session (i.e. snapshot)
 restore            | Restore Qubes VMs from the Wyng archive
 verify             | Verify archive data integrity
 prune              | Remove older backup sessions from archive
@@ -62,21 +63,12 @@ $ # Start by creating a fresh Wyng archive:
 $ sudo wyng arch-init --dest=file:/mnt/backups/laptop3.backup
 
 
-$ # Show Qubes local storage
-$ sudo wyng-util-qubes list --pool-info
-wyng-util-qubes v0.8beta
-
-Qubes local storage pools:
- varlibqubes             : file-reflink, /var/lib/qubes
- vm-pool                 : thin_lvm, qubes_dom0/vm-pool
-
- 
 $ # Make wyng backups of the VMs _work_ and _personal_
-$ sudo wyng-util-qubes backup work personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
+$ sudo wyng-util-qubes backup work personal --dest=file:/mnt/backups/laptop3.backup
 
 
 $ # Restore VM _personal_ from a wyng archive
-$ sudo wyng-util-qubes restore personal --pool=vm-pool --dest=file:/mnt/backups/laptop3.backup
+$ sudo wyng-util-qubes restore personal --dest=file:/mnt/backups/laptop3.backup
 
 ```
 
@@ -89,11 +81,8 @@ to remote via an ssh-equipped VM...
 $ sudo wyng arch-init --dest=qubes://sys-backup/mnt/backups/laptop3.backup
 
 $ sudo wyng arch-init --dest=qubes-ssh://sys-backup:user@192.168.1.10/mnt/backups/laptop3.backup
-
 ```
 
-Use of `--pool` is optional, but should be used if you've setup any non-default Qubes pools,
-i.e. other than the one named 'vm-pool'.
 
 
 ### Notes
@@ -102,15 +91,19 @@ To address the thorny issue of restoring VM settings on Qubes OS, a best-effort 
 individually setting, resetting or removing each value depending on whether the property exists
 in the backup and whether its writable and has a default value according to Qubes.  This differs
 from the `qubes-backup` method which always creates new, differently-named VMs when restoring,
-often resulting in extra, unwanted VMs which don't connect to each other or reference appropriate templates as the user originally intended.  Since users' security expectations, scripts and
+often resulting in extra, unwanted VMs which don't connect to each other or reference appropriate
+templates as the user originally intended.  Since users' security expectations, scripts and
 configuration are likely to hinge on VM names, `wyng-util-qubes` addresses a security risk posed by
 Qubes' built-in tools.
 
 For each qube/VM, both private and root volumes are backed up if the qube type is
-either template or standalone.  Otherwise, the backup will include the private volume.
+either template or standalone.  Otherwise, the backup will include only a private volume.
 A 'wyng-qubes-metadata' volume will also be added to the backup session.  By default,
 only backup sessions which include this metadata volume will be accessible for
 `restore` operations.
+
+Use of `--pool` is optional with restore, but should be used if you have setup any non-default
+Qubes pools.  Otherwise, the Qubes default pool will be used when possible.
 
 
 ### Limitations
@@ -118,8 +111,6 @@ only backup sessions which include this metadata volume will be accessible for
 Apart from data, which is restored verbatim, restoration of VM settings may be imperfect.  There is currently
 no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing
 VMs with matching names _will be overwritten._
-
-Currently, selection of different archives can only be done via the `---meta-dir` option.
 
 
 ### License and Warranty
@@ -145,5 +136,4 @@ Warranty:  None.  Use at your own risk!
 
 ### To Do
 
-* Archive selection
 * Btrfs support
