@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240403")
+print("wyng-util-qubes v0.8wip rel 20240404")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
@@ -244,7 +244,7 @@ if options.action == "backup":
     if len(sources) > 1:  x_it(1, "Not Implemented: Multiple --local sources.")
 
     volnames = [x[1] for x in vols]
-    qpool    = sources.values()[0]
+    qpool    = list(sources.values())[0]
 
     # Start Wyng backup with selected VM volumes and import of the metadata tar
     w_options.append("--local=" + "/".join(qpool.path))
