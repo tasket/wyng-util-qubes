@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240331")
+print("wyng-util-qubes v0.8wip rel 20240403")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
@@ -18,7 +18,7 @@ def err_out(text):   sys.stderr.write(text+"\n")
 
 # Exit with simple message
 def x_it(code, text):
-    err_out(text)
+    err_out("Error: "+text)
     #cleanup()
     shutil.rmtree(tmpdir, ignore_errors=True)
     sys.exit(code)
@@ -26,7 +26,7 @@ def x_it(code, text):
 
 class QubesPool:
     def __init__(self, qobj, path):
-        self.name = qobj.name    ; self.driver = qobj.driver
+        self.name = qobj.name    ; self.driver = qobj.driver    ; self.config = qobj.config
         self.path = path         ; self.qobj   = qobj
 
 
@@ -35,9 +35,9 @@ def get_pools():
     pools = {}
     for qpool in qadmin.pools.values():
         if qpool.driver == "lvm_thin":
-            path = f"{qpool.config['volume_group']}/{qpool.config['thin_pool']}"
+            path = (qpool.config['volume_group'], qpool.config['thin_pool'])
         elif qpool.driver == "file-reflink":
-            path = qpool.config["dir_path"]
+            path = (qpool.config["dir_path"], )
         else:
             continue
         pools[qpool.name] = QubesPool(qpool, path)
@@ -92,6 +92,19 @@ def get_qubes_metadata(session):
     return Core3Qubes(tmpdir+"/"+qubesxml).domains
 
 
+def get_vm_volname(vm, voltype="private"):
+    assert voltype in ("private","root")
+    vol = vm.volumes[voltype]
+    pt  = qpools_d[vol.pool].driver    ; template = vm.klass == "TemplateVM"
+
+    if pt == "file-reflink":
+        #vname = f'{"vm-templates" if template else "appvms"}/{vm.name}/{voltype}.img'
+        vname = vm.volumes[voltype].vid + ".img"
+    elif pt == "lvm_thin": #### or (pt == "file-reflink" and convert):
+        vname = f"vm-{vm.name}-{voltype}"
+    return vname
+
+
 def get_qubename_parts(n):
     if n.startswith("vm-") and n.endswith(("-root","-private")):
         return ["vm"] + n.partition("vm-")[-1].rsplit("-",maxsplit=1)
@@ -99,6 +112,17 @@ def get_qubename_parts(n):
         return ((t := n.split("/"))[0], "/".join(t[1:-1]), t[-1])
     else:
         return "","",""
+
+
+def convert_volname(n, to_pooltype, template):
+    p = get_qubename_parts(n)
+    if to_pooltype == "file-reflink":
+        assert n.startswith("vm-")
+        n = f'{"vm-templates" if template else "appvms"}/{p[1]}/{p[2].removesuffix(".img")}.img'
+    elif to_pooltype == "lvm_thin":
+        assert n.startswith("vm-templates") or not template
+        n = f'vm-{p[1]}-{p[2].removesuffix(".img")}'
+    return (n, template, to_pooltype)
 
 
 def handle_wyng_vol_error(p):
@@ -132,6 +156,7 @@ if os.getuid() > 0:
 parser = argparse.ArgumentParser(description="")
 parser.add_argument("action", choices=("backup","restore","verify","prune","delete","list"),
                     help="Action to take")
+parser.add_argument("--authmin", default="5", help="Minutes to remember authentication.")
 parser.add_argument("--session", help="YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]"
                                  " select session date, singular or range.")
 parser.add_argument("--dedup", "-d", action="store_true", default=False,
@@ -161,6 +186,9 @@ parser.add_argument("qubenames", nargs="*")
 options = parser.parse_args()    ; options.action = options.action.lower()
 options.unattended = options.unattended or not sys.stdin.isatty()
 
+if options.volume:   x_it("--volume not implemented.")
+
+
 
 ## CONSTANTS / GLOBALS ##
 
@@ -174,17 +202,15 @@ selected   = options.qubenames         ; err_domains= []
 if os.path.exists(tmpdir):   shutil.rmtree(tmpdir)
 os.makedirs(tmpdir)
 
-w_options = [wyngcmd]
-qpools_d  = get_pools()      ; poolname = options.pool or "vm-pool"
-if poolname not in qpools_d and options.action in ("backup","restore"):
-    print("Please specify a valid --pool.")
-    print_pools()   ; x_it(1, "")
-elif poolname in qpools_d:
-    qpool = qpools_d[poolname]   ; w_options.append("--local="+qpool.path)
+w_options = [wyngcmd]    ; qpools_d  = get_pools()
+if options.dest:
+    w_options.append("--dest="+options.dest)
+else:
+    x_it(1, "A --dest <archive location> is required.")
 if options.local:   x_it(1, "Please use --pool instead of --local")
-if options.dest:       w_options.append("--dest="+options.dest)
 if options.metadir:    w_options.append("--meta-dir="+options.metadir)
 if options.unattended: w_options.append("-u")
+w_options.append("--authmin="+options.authmin)
 w_options.extend(["--"+x for x in options.wyngopt])
 
 
@@ -197,25 +223,35 @@ if options.action == "backup":
 
     vols     = []
     includes = [x.name for x in live_qubes if x.include_in_backups and options.includes]
-    for vm in sorted(set(selected+includes)):
-        if vm == "dom0" or vm not in live_qubes or vm in options.exclude:
-            print("Skipping", vm)
+    for vmname in sorted(set(selected+includes)):
+        if vmname == "dom0" or vmname not in live_qubes or vmname in options.exclude:
+            print("Skipping", vmname)
             continue
-        vols.append("vm-"+vm+"-private") ####  Obtain vol name from Qubes API
-        if "template" not in live_qubes[vm].property_list():   vols.append("vm-"+vm+"-root") ####
+        vm = live_qubes[vmname]
+        for ii in ("private","root"):
+            if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
+            # Create a 3-tuple of volume obj, normalized vol name, pool obj
+            vols.append( (vm.volumes[ii], get_vm_volname(vm, ii), qpools_d[vm.volumes[ii].pool]) )
 
-    vols += options.volume
-    if not vols:   raise ValueError("Please supply a list of Qubes VMs or --volume to backup.")
+    if not vols:   x_it(1, "Please supply a list of Qubes VMs to backup.")
 
     # Copy the Qubes metadata to a .tar
     os.chdir(qubesvar)
     run("find . -name '*.xml' | tar -czf " +tarpath+ " --verbatim-files-from -T -", shell=True)
 
+    # Find unique local paths / vgs
+    sources = {(x[2].driver, x[2].path[0]): x[2] for x in vols}
+    if len(sources) > 1:  x_it(1, "Not Implemented: Multiple --local sources.")
+
+    volnames = [x[1] for x in vols]
+    qpool    = sources.values()[0]
+
     # Start Wyng backup with selected VM volumes and import of the metadata tar
+    w_options.append("--local=" + "/".join(qpool.path))
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{tarpath}"]
     if options.autoprune:  wyng_cmd.append("--autoprune="+options.autoprune)
     if options.dedup:      wyng_cmd.append("-d")
-    p = run(wyng_cmd + ["send"] + vols, stdout=sys.stdout, stderr=sys.stderr)
+    p = run(wyng_cmd + ["send"] + volnames, stdout=sys.stdout, stderr=sys.stderr)
 
 
 elif options.action == "restore":
