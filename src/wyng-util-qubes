@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240404")
+print("wyng-util-qubes v0.8wip rel 20240405")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
@@ -221,8 +221,8 @@ if not (options.action == "list" and options.pool_info):
 # Process Actions
 if options.action == "backup":
 
-    vols     = []
-    includes = [x.name for x in live_qubes if x.include_in_backups and options.includes]
+    pool_vols = {}
+    includes  = [x.name for x in live_qubes if x.include_in_backups and options.includes]
     for vmname in sorted(set(selected+includes)):
         if vmname == "dom0" or vmname not in live_qubes or vmname in options.exclude:
             print("Skipping", vmname)
@@ -230,28 +230,30 @@ if options.action == "backup":
         vm = live_qubes[vmname]
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
-            # Create a 3-tuple of volume obj, normalized vol name, pool obj
-            vols.append( (vm.volumes[ii], get_vm_volname(vm, ii), qpools_d[vm.volumes[ii].pool]) )
+            # Create a dict of {pool.pathname: [volnames]}
+            # Enh: Possibly change key to pool.driver + pool.path[0] and parse it in wyng
+            # for better lvm grouping
+            pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
+                                 get_vm_volname(vm, ii)  )
 
-    if not vols:   x_it(1, "Please supply a list of Qubes VMs to backup.")
+
+    if not pool_vols:   x_it(1, "Please supply a list of Qubes VMs to backup.")
 
     # Copy the Qubes metadata to a .tar
     os.chdir(qubesvar)
     run("find . -name '*.xml' | tar -czf " +tarpath+ " --verbatim-files-from -T -", shell=True)
 
-    # Find unique local paths / vgs
-    sources = {(x[2].driver, x[2].path[0]): x[2] for x in vols}
-    if len(sources) > 1:  x_it(1, "Not Implemented: Multiple --local sources.")
-
-    volnames = [x[1] for x in vols]
-    qpool    = list(sources.values())[0]
+    # Find unique local paths / vgs:
+    ###sources = {(x.driver, x.path[0]): y+[x] for x,y in vols.items()}
 
     # Start Wyng backup with selected VM volumes and import of the metadata tar
-    w_options.append("--local=" + "/".join(qpool.path))
+    json.dump(pool_vols, open(jsontmp := "/tmp/wuq_vols.lst", "w")) ####
+    w_options.append("--local-from=" + jsontmp)
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{tarpath}"]
     if options.autoprune:  wyng_cmd.append("--autoprune="+options.autoprune)
     if options.dedup:      wyng_cmd.append("-d")
-    p = run(wyng_cmd + ["send"] + volnames, stdout=sys.stdout, stderr=sys.stderr)
+
+    p = run(wyng_cmd + ["send"], stdout=sys.stdout, stderr=sys.stderr)
 
 
 elif options.action == "restore":
@@ -260,12 +262,12 @@ elif options.action == "restore":
     if not options.session:
         raise ValueError("Please specify a session to restore.")
 
-    backups  = get_qubes_metadata(options.session)
+    ##qpool    = qpools_d[options.pool or qadmin.default_pool]
+    backups  = get_qubes_metadata(options.session)   ; vols  = []
     selected = set(selected or wsessionqubes[options.session]) - set(options.exclude)
     os.chdir(tmpdir)
 
     # Match VM selections to backed-up volumes
-    lvolumes  = []
     templates = [x.name for x in backups.values() if x.klass== "TemplateVM" and x.name in selected]
     appvms    = [x.name for x in backups.values()
                  if x.name not in templates and x.name in selected and x.name != "dom0"]
@@ -279,39 +281,46 @@ elif options.action == "restore":
 
         # Find local qube or create one
         if target in (x.name for x in live_qubes):
-            target_qube = live_qubes[target]
-            if target_qube.klass != qube.klass:
+            vm = live_qubes[target]
+            if vm.klass != qube.klass:
                 err_out("Class mismatch %s vs %s for qube named '%s'."
-                        % (target_qube.klass, qube.klass, qube.name))
+                        % (vm.klass, qube.klass, qube.name))
                 err_domains.append(qube.name)
-            elif not target_qube.is_halted():
-                target_qube.kill()
+            elif not vm.is_halted():
+                vm.kill()
         else:
-            target_qube = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
-                                             template=qube.template)
+            vm = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
+                                    template=qube.template)
 
-        target_qube.tags.add("restore_incomplete")
-        lvolumes.append("vm-"+target+"-private") ####
-        if target in templates:   lvolumes.append("vm-"+target+"-root") ####
+        vm.tags.add("restore_incomplete")
+        for ii in ("private","root"):
+            if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
+            # Create a 3-tuple of volume obj, normalized vol name, pool obj
+            vols.append( (vm.volumes[ii], get_vm_volname(vm, ii), qpools_d[vm.volumes[ii].pool]) )
+
+    # Find unique local paths / vgs
+    poolgroups = {(x[2].driver, x[2].path[0]): x[2] for x in vols}
 
     if not options.unattended:
         print("Warning:  Restoring to existing VMs will overwrite them.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     # Restore data volumes
-    #Enh: allow restoring incomplete set of data
-    wyng_cmd = w_options + ["-u", "--sparse-write",
-                "--session="+options.session, "receive"] + lvolumes + options.volume
-    p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
-    if p.returncode == 2:
-        handle_wyng_vol_error(p)
-    elif p.returncode > 0:
-        raise subprocess.CalledProcessError(p.returncode, p.stderr)
+    for qpool in poolgroups.values():
+        volnames = [x[1] for x in vols if qpools_d[x.pool] is qpool]
+
+        wyng_cmd = w_options + ["-u", "--sparse-write",
+                    "--session="+options.session, "receive"] + volnames
+        p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
+        if p.returncode == 2:
+            handle_wyng_vol_error(p)
+        elif p.returncode > 0:
+            raise subprocess.CalledProcessError(p.returncode, p.stderr)
 
     # Selectively restore qube properties
     # Remove or reset properties that are not in the backup metadata
     for target in templates + appvms:
-        qube = backups[target]    ; target_qube = live_qubes[target]
+        qube = backups[target]    ; vm = live_qubes[target]
         subdir = "vm-templates/" if qube.klass == "TemplateVM" else "appvms/"
 
         if exists(subdir+qube.name+"/"+fwfile):
@@ -319,7 +328,7 @@ elif options.action == "restore":
         elif exists(qubesvar+subdir+target+"/"+fwfile):
             os.remove(qubesvar+subdir+target+"/"+fwfile)
 
-        for prop in set(qube.properties) | set(target_qube.property_list()):
+        for prop in set(qube.properties) | set(vm.property_list()):
             if prop in ("dispid","installed_by_rpm","default_dispvm","qid","uuid","xid","klass",
                         "template","name","label","backup_timestamp","ip","ip6",
                         "stubdom_mem","stubdom_xid"):
@@ -328,24 +337,24 @@ elif options.action == "restore":
             if prop in qube.properties:
                 pval = qube.properties[prop]
                 try:
-                    setattr(target_qube, prop, pval)
+                    setattr(vm, prop, pval)
                 except Exception as err:
                     print("Error setting %s.%s to %s: %s" % (qube.name, prop, pval, err))
                     err_domains.append(qube.name)
             else:
-                propdef = target_qube.property_get_default(prop)
+                propdef = vm.property_get_default(prop)
                 try:
-                    setattr(target_qube, prop, propdef)
+                    setattr(vm, prop, propdef)
                 except Exception as err:
                     if "cannot be set" not in repr(err):
                         print("Error:", prop, propdef)   ; err_domains.append(qube.name)
 
-        for prop, pval in qube.features.items():   target_qube.features[prop] = pval
-        for prop in (x for x in target_qube.features if x not in qube.features):
-            del(target_qube.features[prop])
+        for prop, pval in qube.features.items():   vm.features[prop] = pval
+        for prop in (x for x in vm.features if x not in qube.features):
+            del(vm.features[prop])
 
-        for bus in target_qube.devices:
-            busobj  = target_qube.devices[bus]
+        for bus in vm.devices:
+            busobj  = vm.devices[bus]
             devlist = list(busobj.assignments())
             for dev in devlist:   busobj.detach(dev)
         for bus in qube.devices:
@@ -354,17 +363,17 @@ elif options.action == "restore":
                 assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
                                                     ident=ident, options=options, persistent=True)
                 try:
-                    target_qube.devices[bus].attach(assignment)
+                    vm.devices[bus].attach(assignment)
                 except Exception as err:
                     print("Error attaching device %s:%s to %s: %s" % (bus,ident,qube.name,err))
                     err_domains.append(qube.name)
 
-        for tag in qube.tags:   target_qube.tags.add(tag)
-        for tag in (x for x in target_qube.tags if x not in qube.tags):
-            target_qube.tags.remove(tag)
+        for tag in qube.tags:   vm.tags.add(tag)
+        for tag in (x for x in vm.tags if x not in qube.tags):
+            vm.tags.remove(tag)
 
-        if "restore_incomplete" in target_qube.tags and target not in err_domains:
-            target_qube.tags.remove("restore_incomplete")
+        if "restore_incomplete" in vm.tags and target not in err_domains:
+            vm.tags.remove("restore_incomplete")
 
 
 elif options.action == "verify":
