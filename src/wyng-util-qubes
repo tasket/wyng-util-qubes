@@ -5,9 +5,9 @@
 ###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240405")
+print("wyng-util-qubes v0.8wip rel 20240407")
 
-import qubesadmin, sys, os, shutil, subprocess, argparse, json
+import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
 
 exists  = os.path.exists
@@ -156,7 +156,7 @@ if os.getuid() > 0:
 parser = argparse.ArgumentParser(description="")
 parser.add_argument("action", choices=("backup","restore","verify","prune","delete","list"),
                     help="Action to take")
-parser.add_argument("--authmin", default="5", help="Minutes to remember authentication.")
+parser.add_argument("--authmin", help="Minutes to remember authentication.")
 parser.add_argument("--session", help="YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]"
                                  " select session date, singular or range.")
 parser.add_argument("--dedup", "-d", action="store_true", default=False,
@@ -179,6 +179,8 @@ parser.add_argument("--local", help="Deprecated: Use --pool")
 parser.add_argument("--dest",  help="URL location of archive.")
 parser.add_argument("-w", dest="wyngopt", action="append", default=[],
                     help="Pass an option to Wyng directly.")
+parser.add_argument("--include-disposable", action="store_true", default=False,
+                    help="Include disposable VMs (experimental)")
 parser.add_argument("--unattended", "-u", action="store_true", default=False,
                     help="Unattended operation")
 parser.add_argument("--meta-dir", dest="metadir", default="", help="Use alternate metadata path.")
@@ -194,7 +196,8 @@ if options.volume:   x_it("--volume not implemented.")
 
 thispath   = os.path.dirname(__file__) ; mvolname   = "wyng-qubes-metadata"
 wyngcmd    = thispath+"/wyng" if exists(thispath+"/wyng") else "wyng"
-tmpdir     = "/tmp/wyng-util-qubes"    ; tarpath    = tmpdir+"/qmeta.tgz"
+tmpdir_obj = tempfile.TemporaryDirectory(dir="/tmp", prefix="wuq")
+tmpdir     = tmpdir_obj.name           ; tarpath    = tmpdir+"/qmeta.tgz"
 qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"    ; fwfile = "firewall.xml"
 qadmin     = qubesadmin.Qubes()        ; qdaemon    = qadmin.app     ; live_qubes = qdaemon.domains
 selected   = options.qubenames         ; err_domains= []
@@ -205,12 +208,12 @@ os.makedirs(tmpdir)
 w_options = [wyngcmd]    ; qpools_d  = get_pools()
 if options.dest:
     w_options.append("--dest="+options.dest)
-else:
-    x_it(1, "A --dest <archive location> is required.")
+#else:
+#    x_it(1, "A --dest <archive location> is required.")
 if options.local:   x_it(1, "Please use --pool instead of --local")
 if options.metadir:    w_options.append("--meta-dir="+options.metadir)
 if options.unattended: w_options.append("-u")
-w_options.append("--authmin="+options.authmin)
+if options.authmin:    w_options.append("--authmin="+options.authmin)
 w_options.extend(["--"+x for x in options.wyngopt])
 
 
@@ -224,15 +227,15 @@ if options.action == "backup":
     pool_vols = {}
     includes  = [x.name for x in live_qubes if x.include_in_backups and options.includes]
     for vmname in sorted(set(selected+includes)):
-        if vmname == "dom0" or vmname not in live_qubes or vmname in options.exclude:
-            print("Skipping", vmname)
-            continue
         vm = live_qubes[vmname]
+        if vmname == "dom0" or vmname not in live_qubes or vmname in options.exclude:
+            print("Skipping", vmname)    ; continue
+        if vm.klass == "DispVM" and not options.include_disposable:
+            print("Skipping DispVM", vmname)    ; continue
+
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
             # Create a dict of {pool.pathname: [volnames]}
-            # Enh: Possibly change key to pool.driver + pool.path[0] and parse it in wyng
-            # for better lvm grouping
             pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
                                  get_vm_volname(vm, ii)  )
 
@@ -243,11 +246,8 @@ if options.action == "backup":
     os.chdir(qubesvar)
     run("find . -name '*.xml' | tar -czf " +tarpath+ " --verbatim-files-from -T -", shell=True)
 
-    # Find unique local paths / vgs:
-    ###sources = {(x.driver, x.path[0]): y+[x] for x,y in vols.items()}
-
     # Start Wyng backup with selected VM volumes and import of the metadata tar
-    json.dump(pool_vols, open(jsontmp := "/tmp/wuq_vols.lst", "w")) ####
+    json.dump(pool_vols, open(jsontmp := tmpdir+"/wuq_vols.lst", "w"))
     w_options.append("--local-from=" + jsontmp)
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{tarpath}"]
     if options.autoprune:  wyng_cmd.append("--autoprune="+options.autoprune)
@@ -262,8 +262,7 @@ elif options.action == "restore":
     if not options.session:
         raise ValueError("Please specify a session to restore.")
 
-    ##qpool    = qpools_d[options.pool or qadmin.default_pool]
-    backups  = get_qubes_metadata(options.session)   ; vols  = []
+    backups  = get_qubes_metadata(options.session)   ; pool_vols  = {}
     selected = set(selected or wsessionqubes[options.session]) - set(options.exclude)
     os.chdir(tmpdir)
 
@@ -296,26 +295,23 @@ elif options.action == "restore":
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
             # Create a 3-tuple of volume obj, normalized vol name, pool obj
-            vols.append( (vm.volumes[ii], get_vm_volname(vm, ii), qpools_d[vm.volumes[ii].pool]) )
-
-    # Find unique local paths / vgs
-    poolgroups = {(x[2].driver, x[2].path[0]): x[2] for x in vols}
+            #vols.append( (vm.volumes[ii], get_vm_volname(vm, ii), qpools_d[vm.volumes[ii].pool]) )
+            pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
+                                 get_vm_volname(vm, ii)  )
 
     if not options.unattended:
         print("Warning:  Restoring to existing VMs will overwrite them.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     # Restore data volumes
-    for qpool in poolgroups.values():
-        volnames = [x[1] for x in vols if qpools_d[x.pool] is qpool]
-
-        wyng_cmd = w_options + ["-u", "--sparse-write",
-                    "--session="+options.session, "receive"] + volnames
-        p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
-        if p.returncode == 2:
-            handle_wyng_vol_error(p)
-        elif p.returncode > 0:
-            raise subprocess.CalledProcessError(p.returncode, p.stderr)
+    json.dump(pool_vols, open(jsontmp := tmpdir+"/wuq_vols.lst", "w"))
+    wyng_cmd = w_options + ["-u", "--sparse-write", "--local-from="+jsontmp,
+                "--session="+options.session, "receive"]
+    p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
+    if p.returncode == 2:
+        handle_wyng_vol_error(p)
+    elif p.returncode > 0:
+        raise subprocess.CalledProcessError(p.returncode, p.stderr)
 
     # Selectively restore qube properties
     # Remove or reset properties that are not in the backup metadata
@@ -387,7 +383,7 @@ elif options.action == "verify":
                                         if vm in selected and ses==options.session]
 
     wyng_cmd = w_options + ["--session="+options.session, "verify"] \
-             + [mvolname] + lvolumes + options.volume
+             + [mvolname] + lvolumes
     p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
@@ -415,7 +411,7 @@ elif options.action == "prune":
     if options.session: wyng_cmd.append("--session="+options.session)
     if options.allbefore: wyng_cmd.append("--all-before")
     if options.autoprune: wyng_cmd.append("--autoprune="+options.autoprune)
-    run(wyng_cmd + ["prune"] + lvolumes + options.volume, text=True, stderr=subprocess.PIPE)
+    run(wyng_cmd + ["prune"] + lvolumes, text=True, stderr=subprocess.PIPE)
 
 
 elif options.action == "delete":
@@ -428,7 +424,7 @@ elif options.action == "delete":
         print("Warning:  Data cannot be recovered after deleting it from the archive.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
-    for vol in lvolumes + options.volume:
+    for vol in lvolumes:
         wyng_cmd = w_options + ["-u", "delete", vol]
         run(wyng_cmd)
 
