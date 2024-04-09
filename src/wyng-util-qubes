@@ -2,10 +2,10 @@
 # editor width: 100   -----------------------------------------------------------------------------
 
 ###  wyng-util-qubes
-###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
+###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240407")
+print("wyng-util-qubes v0.9wip rel 20240408")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -131,8 +131,8 @@ def handle_wyng_vol_error(p):
     err_out("(Wyng) "+"".join(errln))
 
 
-def run(cmd, check=True, **kwargs):
-    capt   = not ("stderr" in kwargs or "stout" in kwargs)
+def run(cmd, check=True, capt=True, **kwargs):
+    capt   = capt and not ("stderr" in kwargs or "stout" in kwargs)
     result = subprocess.run(cmd, capture_output=capt, **kwargs)
     if check and result.returncode:
         err_out(f"{result.stdout}\n{result.stderr}")
@@ -295,7 +295,6 @@ elif options.action == "restore":
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
             # Create a 3-tuple of volume obj, normalized vol name, pool obj
-            #vols.append( (vm.volumes[ii], get_vm_volname(vm, ii), qpools_d[vm.volumes[ii].pool]) )
             pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
                                  get_vm_volname(vm, ii)  )
 
