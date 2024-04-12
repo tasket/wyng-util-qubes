@@ -2,10 +2,10 @@
 # editor width: 100   -----------------------------------------------------------------------------
 
 ###  wyng-util-qubes
-###  Copyright Christopher Laprise 2023 / tasket@protonmail.com
+###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240331")
+print("wyng-util-qubes v0.8wip rel 20240411")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
@@ -140,8 +140,6 @@ parser.add_argument("--includes", "-i", action="store_true", default=False,
                     help="Select VMs marked 'include in backups' (backup)")
 parser.add_argument("--exclude", action="append", default=[],
                     help="VM name to exclude. (backup)")
-parser.add_argument("--volume", action="append", default=[],
-                    help="Extra logical volume to include.")
 parser.add_argument("--autoprune", default=None,
                     help="Automatic pruning: off/on/full. (backup, prune)")
 parser.add_argument("--all-before", dest="allbefore", action="store_true", default=False,
@@ -149,7 +147,7 @@ parser.add_argument("--all-before", dest="allbefore", action="store_true", defau
 parser.add_argument("--pool-info", action="store_true", default=False,
                     help="Show local disk storage (list)")
 parser.add_argument("--pool", "-p", default=None,
-                    help="Override default 'vm-pool' Qubes local storage pool.")
+                    help="Specify Qubes storage pool for creating VMs (restore).")
 parser.add_argument("--local", help="Deprecated: Use --pool")
 parser.add_argument("--dest",  help="URL location of archive.")
 parser.add_argument("-w", dest="wyngopt", action="append", default=[],
@@ -175,12 +173,12 @@ if os.path.exists(tmpdir):   shutil.rmtree(tmpdir)
 os.makedirs(tmpdir)
 
 w_options = [wyngcmd]
-qpools_d  = get_pools()      ; poolname = options.pool or "vm-pool"
-if poolname not in qpools_d and options.action in ("backup","restore"):
+qpools_d  = get_pools()
+if options.pool and options.pool not in qpools_d and options.action in ("backup","restore"):
     print("Please specify a valid --pool.")
     print_pools()   ; x_it(1, "")
-elif poolname in qpools_d:
-    qpool = qpools_d[poolname]   ; w_options.append("--local="+qpool.path)
+
+
 if options.local:   x_it(1, "Please use --pool instead of --local")
 if options.dest:       w_options.append("--dest="+options.dest)
 if options.metadir:    w_options.append("--meta-dir="+options.metadir)
@@ -195,27 +193,42 @@ if not (options.action == "list" and options.pool_info):
 # Process Actions
 if options.action == "backup":
 
-    vols     = []
+    pool_vols = {}
     includes = [x.name for x in live_qubes if x.include_in_backups and options.includes]
-    for vm in sorted(set(selected+includes)):
-        if vm == "dom0" or vm not in live_qubes or vm in options.exclude:
-            print("Skipping", vm)
+    for vmname in sorted(set(selected+includes)):
+        if vmname == "dom0" or vmname not in live_qubes or vmname in options.exclude:
+            print("Skipping", vmname)
             continue
-        vols.append("vm-"+vm+"-private") ####  Obtain vol name from Qubes API
-        if "template" not in live_qubes[vm].property_list():   vols.append("vm-"+vm+"-root") ####
+        vm = live_qubes[vmname]
 
-    vols += options.volume
-    if not vols:   raise ValueError("Please supply a list of Qubes VMs or --volume to backup.")
+        for ii in ("private","root"):
+            if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
+            pool_vols.setdefault(qpools_d[vm.volumes[ii].pool], []).append(f"vm-{vmname}-{ii}")
+
+    if len(pool_vols) > 1:
+        err_out("Not Implemented: Multiple pools.")
+        for x,y in pool_vols.items():   err_out(x.name) ; err_out("  "+", ".join(y))
+        x_it(1, "")
+
+    if not pool_vols:   raise ValueError("Please supply a list of Qubes VMs to backup.")
+    if len(pool_vols) > 1:
+        err_out("Not Implemented: Multiple pools. See v0.9 for multi-pool support.")
+        for x,y in pool_vols.items():   err_out(x.name) ; err_out("  "+", ".join(y))
+        x_it(1, "")
+
+    qpool, lvolumes = pool_vols.items()[0]
+    if qpool.driver != "thin_pool":
+        x_it(1, f"Unsupported pool type {qpool.driver}. See v0.9 for multi-driver support.")
 
     # Copy the Qubes metadata to a .tar
     os.chdir(qubesvar)
     run("find . -name '*.xml' | tar -czf " +tarpath+ " --verbatim-files-from -T -", shell=True)
 
     # Start Wyng backup with selected VM volumes and import of the metadata tar
-    wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{tarpath}"]
+    wyng_cmd = w_options + ["--local="+qpool.path, f"--import-other-from={mvolname}:|:{tarpath}"]
     if options.autoprune:  wyng_cmd.append("--autoprune="+options.autoprune)
     if options.dedup:      wyng_cmd.append("-d")
-    p = run(wyng_cmd + ["send"] + vols, stdout=sys.stdout, stderr=sys.stderr)
+    p = run(wyng_cmd + ["send"] + lvolumes, stdout=sys.stdout, stderr=sys.stderr)
 
 
 elif options.action == "restore":
@@ -229,14 +242,14 @@ elif options.action == "restore":
     os.chdir(tmpdir)
 
     # Match VM selections to backed-up volumes
-    lvolumes  = []
+    pool_vols = {}
     templates = [x.name for x in backups.values() if x.klass== "TemplateVM" and x.name in selected]
     appvms    = [x.name for x in backups.values()
                  if x.name not in templates and x.name in selected and x.name != "dom0"]
     if "dom0" in selected:   print("Skipping dom0.")
-    for vm in selected - set(templates + appvms):
-        if vm in wsessionqubes[options.session]:
-            err_out(f"Skipping {vm} (No metadata)")    ; err_domains.append(vm)
+    for vmname in selected - set(templates + appvms):
+        if vmname in wsessionqubes[options.session]:
+            err_out(f"Skipping {vmname} (No metadata)")    ; err_domains.append(vmname)
 
     for target in templates + appvms:
         qube = backups[target]
@@ -252,11 +265,23 @@ elif options.action == "restore":
                 target_qube.kill()
         else:
             target_qube = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
-                                             template=qube.template)
+                                             template=qube.template, pool=options.pool)
+            target_qube.tags.add("restore_incomplete")
 
-        target_qube.tags.add("restore_incomplete")
-        lvolumes.append("vm-"+target+"-private") ####
-        if target in templates:   lvolumes.append("vm-"+target+"-root") ####
+        vm = target_qube
+        for ii in ("private","root"):
+            if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
+            # Create a 3-tuple of volume obj, normalized vol name, pool obj
+            pool_vols.setdefault(qpools_d[vm.volumes[ii].pool], []).append(f"vm-{vmname}-{ii}")
+
+    if len(pool_vols) > 1:
+        err_out("Not Implemented: Multiple pools. See v0.9 for multi-pool support.")
+        for x,y in pool_vols.items():   err_out(x.name) ; err_out("  "+", ".join(y))
+        x_it(1, "")
+
+    qpool, lvolumes = pool_vols.items()[0]
+    if qpool.driver != "thin_pool":
+        x_it(1, f"Unsupported pool type {qpool.driver}. See v0.9 for multi-driver support.")
 
     if not options.unattended:
         print("Warning:  Restoring to existing VMs will overwrite them.")
@@ -264,8 +289,8 @@ elif options.action == "restore":
 
     # Restore data volumes
     #Enh: allow restoring incomplete set of data
-    wyng_cmd = w_options + ["-u", "--sparse-write",
-                "--session="+options.session, "receive"] + lvolumes + options.volume
+    wyng_cmd = w_options + ["-u", "--sparse-write", "--local="+qpool.path,
+                "--session="+options.session, "receive"] + lvolumes
     p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
@@ -276,6 +301,7 @@ elif options.action == "restore":
     # Remove or reset properties that are not in the backup metadata
     for target in templates + appvms:
         qube = backups[target]    ; target_qube = live_qubes[target]
+        target_qube.tags.add("restore_incomplete")
         subdir = "vm-templates/" if qube.klass == "TemplateVM" else "appvms/"
 
         if exists(subdir+qube.name+"/"+fwfile):
@@ -342,7 +368,7 @@ elif options.action == "verify":
                                         if vm in selected and ses==options.session]
 
     wyng_cmd = w_options + ["--session="+options.session, "verify"] \
-             + [mvolname] + lvolumes + options.volume
+             + [mvolname] + lvolumes
     p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
@@ -370,7 +396,7 @@ elif options.action == "prune":
     if options.session: wyng_cmd.append("--session="+options.session)
     if options.allbefore: wyng_cmd.append("--all-before")
     if options.autoprune: wyng_cmd.append("--autoprune="+options.autoprune)
-    run(wyng_cmd + ["prune"] + lvolumes + options.volume, text=True, stderr=subprocess.PIPE)
+    run(wyng_cmd + ["prune"] + lvolumes, text=True, stderr=subprocess.PIPE)
 
 
 elif options.action == "delete":
@@ -383,7 +409,7 @@ elif options.action == "delete":
         print("Warning:  Data cannot be recovered after deleting it from the archive.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
-    for vol in lvolumes + options.volume:
+    for vol in lvolumes:
         wyng_cmd = w_options + ["-u", "delete", vol]
         run(wyng_cmd)
 
