@@ -49,7 +49,6 @@ list               | Show contents of archive
 --pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (backup, restore)
 --pool-info            | Show local disk storage (list)
 --local=_vg/pool_      | Deprecated. Use --pool instead.
---volume=volname       | Include a specific disk volume by name (not qube name)
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`

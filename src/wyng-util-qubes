@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.8wip rel 20240411")
+print("wyng-util-qubes v0.8beta rel 20240411")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json
 from qubesadmin.backup.core3 import Core3Qubes
@@ -203,7 +203,7 @@ if options.action == "backup":
 
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
-            pool_vols.setdefault(qpools_d[vm.volumes[ii].pool], []).append(f"vm-{vmname}-{ii}")
+            pool_vols.setdefault(qpools_d[vm.volumes[ii].pool], []).append(f"vm-{vm.name}-{ii}")
 
     if len(pool_vols) > 1:
         err_out("Not Implemented: Multiple pools.")
@@ -216,8 +216,8 @@ if options.action == "backup":
         for x,y in pool_vols.items():   err_out(x.name) ; err_out("  "+", ".join(y))
         x_it(1, "")
 
-    qpool, lvolumes = pool_vols.items()[0]
-    if qpool.driver != "thin_pool":
+    qpool, lvolumes = list(pool_vols.items())[0]
+    if qpool.driver != "lvm_thin":
         x_it(1, f"Unsupported pool type {qpool.driver}. See v0.9 for multi-driver support.")
 
     # Copy the Qubes metadata to a .tar
@@ -272,15 +272,15 @@ elif options.action == "restore":
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
             # Create a 3-tuple of volume obj, normalized vol name, pool obj
-            pool_vols.setdefault(qpools_d[vm.volumes[ii].pool], []).append(f"vm-{vmname}-{ii}")
+            pool_vols.setdefault(qpools_d[vm.volumes[ii].pool], []).append(f"vm-{vm.name}-{ii}")
 
     if len(pool_vols) > 1:
         err_out("Not Implemented: Multiple pools. See v0.9 for multi-pool support.")
         for x,y in pool_vols.items():   err_out(x.name) ; err_out("  "+", ".join(y))
         x_it(1, "")
 
-    qpool, lvolumes = pool_vols.items()[0]
-    if qpool.driver != "thin_pool":
+    qpool, lvolumes = list(pool_vols.items())[0]
+    if qpool.driver != "lvm_thin":
         x_it(1, f"Unsupported pool type {qpool.driver}. See v0.9 for multi-driver support.")
 
     if not options.unattended:
