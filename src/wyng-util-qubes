@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9wip rel 20240412")
+print("wyng-util-qubes v0.9wip rel 20240414")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -53,12 +53,14 @@ def print_pools():
 # Get archive directory
 def get_wyng_directory():
     # Parse full vol/session list into lookup tables...
-    # wvolsessionmap:  session -> volume_name
-    # wsessionqubes :  session -> qube_name
-    # wvolumemap    :  volume_name -> session
-    # qube_wvolmap  :  (dict)qube_name -> (dict)session -> (set)volume_name
+    # wvolsessionmap:  (dict)session -> arch_vol_name
+    # wsessionqubes :  (dict)session -> qube_name
+    # wvolumemap    :  (dict)arch_vol_name -> (list)sessions
+    # qube_wvolmap  :  (dict)qube_name -> (dict)session -> (set)arch_vol_name
+    # q_wvoltypemap :  (dict)qube_name -> (dict)voltype -> arch_vol_name
 
-    wvolsessionmap, wvolumemap, qube_wvolmap = {}, {}, {}   ; volname = qubename = None
+    wvolsessionmap, wvolumemap, qube_wvolmap, q_wpriv_wrootmap = {}, {}, {}, {}
+    volname  = qubename = None
     wyng_cmd = w_options + ["--json", "list"]
     jdata = json.loads((j := run(wyng_cmd, text=True).stdout)[j.find("{"):])
 
@@ -77,8 +79,15 @@ def get_wyng_directory():
                      if x.startswith(("vm-","appvms/","vm-templates/"))):
         prefix, qubename, suffix = get_qubename_parts(vol)
         qube_wvolmap.setdefault(qubename, dict()).setdefault(ses, set()).add(vol)
+        if vol.endswith(("-root","/root.img")):
+            voltype = "root"
+        elif vol.endswith(("-private","/private.img")):
+            voltype = "private"
+        else:
+            continue
+        q_wpriv_wrootmap.setdefault(qubename, {}).setdefault(ses,{})[voltype] = vol
 
-    return jdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap
+    return jdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap, q_wpriv_wrootmap
 
 
 def get_qubes_metadata(session):
@@ -92,16 +101,17 @@ def get_qubes_metadata(session):
     return Core3Qubes(tmpdir+"/"+qubesxml).domains
 
 
-def get_vm_volname(vmname, voltype="private", to_reflink=False):
-    assert voltype in ("private","root")
+def get_vm_volname(vmname, voltype="private"):
+    assert voltype in ("private","root") #### and conv in ("rlnk","tlvm","")
     vm  = live_qubes[vmname]           ; vol = vm.volumes[voltype]
     pt  = qpools_d[vol.pool].driver    ; template = vm.klass == "TemplateVM"
 
     if pt == "file-reflink":
         vname = vm.volumes[voltype].vid + ".img"
     elif pt == "lvm_thin":
-        vname = f'{"vm-templates" if template else "appvms"}/{vm.name}/{voltype}.img' \
-                if to_reflink else f"vm-{vm.name}-{voltype}"
+        vname = f"vm-{vm.name}-{voltype}"
+                  #f'{"vm-templates" if template else "appvms"}/{vm.name}/{voltype}.img' \
+                  #if conv=="rlnk" else "")
     return vname
 
 
@@ -222,7 +232,8 @@ w_options.extend(["--"+x for x in options.wyngopt])
 
 
 if not (options.action == "list" and options.pool_info):
-    arch_mdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap = get_wyng_directory()
+    arch_mdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap, q_wpriv_wrootmap \
+        = get_wyng_directory()
 
 
 # Process Actions
@@ -242,7 +253,7 @@ if options.action == "backup":
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
             # Create a dict of {pool.pathname: [volnames]}
             pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
-                                 get_vm_volname(vmname, ii)  )
+                                 (get_vm_volname(vmname, ii), "")  )
 
     if not pool_vols:   x_it(1, "Please supply a list of Qubes VMs to backup.")
 
@@ -306,9 +317,10 @@ elif options.action == "restore":
 
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
-            # Create a dict of {pool.pathname: [volnames]}
+            # Create a dict of {pool.pathname: [(volname, alias), ...]}
             pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
-                                 get_vm_volname(target, ii)  )
+                                 (q_wpriv_wrootmap[target][session][ii],
+                                  get_vm_volname(target, ii))  )
 
     if not options.unattended:
         print("Warning:  Restoring to existing VMs will overwrite them.")
