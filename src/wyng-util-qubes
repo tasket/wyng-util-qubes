@@ -125,6 +125,13 @@ def convert_volname(n, to_pooltype, template):
     return (n, template, to_pooltype)
 
 
+def list_sessions(slist):
+    rows, extra = divmod(size := len(slist), c := columns)   ; rows += bool(extra)
+    if extra and rows < 3 and (columns - extra) > 1:   c -= (columns - extra) // 2
+    for r in range(rows):
+        print("  ".join(sorted(slist[x*rows+r][2:] for x in range(c) if x*rows+r < size)))
+
+
 def handle_wyng_vol_error(p):
     errln = [x.partition("volumes(s)") for x in p.stdout.splitlines() if "volumes(s):" in x]
     err_domains.extend(errln.split())
@@ -190,6 +197,7 @@ options.unattended = options.unattended or not sys.stdin.isatty()
 
 ## CONSTANTS / GLOBALS ##
 
+columns    = max(4, min(10, shutil.get_terminal_size().columns // 17))
 thispath   = os.path.dirname(__file__) ; mvolname   = "wyng-qubes-metadata"
 wyngcmd    = thispath+"/wyng" if exists(thispath+"/wyng") else "wyng"
 tmpdir_obj = tempfile.TemporaryDirectory(dir="/tmp", prefix="wuq")
@@ -279,14 +287,19 @@ elif options.action == "restore":
 
         # Find local qube or create one
         if target in (x.name for x in live_qubes):
-            vm = live_qubes[target]
-            if vm.klass != qube.klass:
-                err_out("Class mismatch %s vs %s for qube named '%s'."
-                        % (vm.klass, qube.klass, qube.name))
-                err_domains.append(qube.name)
-            elif not vm.is_halted():
-                vm.kill()
-        else:
+            vm = live_qubes[target]    ; vmklass = vm.klass
+            if not vm.is_halted():   vm.kill()
+            if vmklass != qube.klass:
+                vm.tags.add("restore_incomplete")
+                try:
+                    del(live_qubes[vm.name])
+                except:
+                    err_out("Class mismatch %s vs %s for qube named '%s'."
+                            % (vmklass, qube.klass, qube.name))
+                    err_domains.append(qube.name)
+                    continue
+
+        if target not in (x.name for x in live_qubes):
             vm = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
                                     template=qube.template, pool=options.pool)
             vm.tags.add("restore_incomplete")
@@ -435,14 +448,21 @@ elif options.action == "delete":
 
 elif options.action == "list":
     if not options.pool_info:   print("URL", arch_mdata["url"])
+    if options.all:   selected = list(qube_wvolmap)
 
     if options.pool_info:
         print_pools()
 
-    elif options.all:
+    elif selected:
         for qube, seslist in qube_wvolmap.items():
-            print(f"Qube {qube}:")
-            print(" ", "  ".join(seslist), "\n")
+            xml_seslist = [x for x in seslist if mvolname in wvolsessionmap[x]
+                                              and qube in selected]
+            if not xml_seslist:   continue
+            print(f"\n{qube}:")
+            if options.unattended:
+                for ses in sorted(xml_seslist):   print(ses)
+            else:
+                list_sessions(xml_seslist)
 
     elif options.session:
         print("\nQubes in session", options.session+":")
@@ -450,17 +470,13 @@ elif options.action == "list":
             flag = "*" if mvolname not in wvolsessionmap[options.session] else ""
             print(" ", qube, flag)
 
-    elif selected:
-        for qube in selected:
-            print("\nSessions with qube "+qube+":")
-            print("  ".join(sorted((x for x,y in wsessionqubes.items()
-                                    if qube in y and mvolname in wvolsessionmap[x])
-                  )))
-            print()
     else:
-        print("\nArchived sessions:")
-        print("  ".join((x for x in sorted(wsessionqubes) if mvolname in wvolsessionmap[x])
-              ))
+        print("\n* Archived Qubes VMs *")
+        print("\nLatest:           VM Name:")
+        for qube, seslist in qube_wvolmap.items():
+            xml_seslist = [x for x in seslist if mvolname in wvolsessionmap[x]]
+            if not xml_seslist:   continue
+            print(sorted(xml_seslist)[-1], " ", qube)
 
 
 # Cleanup
