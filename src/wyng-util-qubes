@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9wip rel 20240414")
+print("wyng-util-qubes v0.9wip rel 20240415")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -263,10 +263,10 @@ if options.action == "backup":
 
     # Start Wyng backup with selected VM volumes and import of the metadata tar
     json.dump(pool_vols, open(jsontmp := tmpdir+"/wuq_vols.lst", "w"))
-    w_options.append("--local-from=" + jsontmp)
+    w_options += ["--local-from=" + jsontmp, "--tag=qubes"]
+    if options.autoprune:  w_options.append("--autoprune="+options.autoprune)
+    if options.dedup:      w_options.append("-d")
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{tarpath}"]
-    if options.autoprune:  wyng_cmd.append("--autoprune="+options.autoprune)
-    if options.dedup:      wyng_cmd.append("-d")
 
     p = run(wyng_cmd + ["send"], stdout=sys.stdout, stderr=sys.stderr)
 
