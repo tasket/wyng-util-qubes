@@ -7,7 +7,7 @@ restores both data and settings for Qubes VMs.
 ### Requirements
 
 * Qubes OS 4.2 in a thin-LVM configuration
-* wyng-backup v0.8beta
+* wyng-backup v0.8beta4
 
 
 ### Command usage
@@ -39,17 +39,17 @@ list               | Show contents of archive
 | _Option_                      | _Description_
 |-------------------------------|--------------
 --includes, -i         | Select all Qubes VMs marked as "include in backups". (backup)
---exclude=qube_name    | Exclude a specific VM from the operation (backup, restore, verify
+--exclude=qube_name    | Exclude a specific VM from the operation (backup, restore, verify)
 --dedup, -d            | Use deduplication. (backup)
 --session=_date-time[,date-time]_ | Select a session or session range by date-time or tag (restore, list, prune).
+--all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
---autoprune=off        | Automatic pruning by calendar date. _(experimental)_
---exclude=qube_name    | Exclude a qube from backup by name.
+--autoprune=<off|on|full>  | Automatic pruning by calendar date.
 --dest=_URL_           | URL location of archive.
---pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (backup, restore)
+--pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --local=_vg/pool_      | Deprecated. Use --pool instead.
---volume=volname       | Include a specific disk volume by name (not qube name)
+--authmin=N            | Extend authentication time by N minutes
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
@@ -83,6 +83,33 @@ $ sudo wyng arch-init --dest=qubes://sys-backup/mnt/backups/laptop3.backup
 $ sudo wyng arch-init --dest=qubes-ssh://sys-backup:user@192.168.1.10/mnt/backups/laptop3.backup
 ```
 
+
+### Commands
+
+Note that `--dest` is assumed to be specified along with each of the commands below.
+
+#### list
+
+`list [vm name] [--session=YYYYMMDD-HHMMSS] [--all]`
+
+Shows a directory of archive contents.  If no parameters are given, a list of qube / VM names
+is given.
+
+
+#### backup
+
+`backup [vm names] [--includes] [--exclude=vmname] [--dedup] [--autoprune] `
+
+Backs up VMs to a Wyng archive.  A list of invdividual VM names may be specified, or
+the `--includes` option may be used to include all VMs that are flagged in Qubes
+for automatic inclusion in backups.  The `--dedup` option will attempt to detect
+duplicate data chunks and reduce the amount of data sent to and disk space taken
+by the archive.  Automatic pruning is also possible; see the Wyng Readme doc for
+details.
+
+`restore [vm name] [--session=YYYYMMDD-HHMMSS]`
+
+Restores VMs from a Wyng archive.  Individual VM name or a session may be specified.
 
 
 ### Notes
@@ -121,7 +148,11 @@ Warranty:  None.  Use at your own risk!
 
 ### History
 
-2023-07-19: v0.7b Works with Wyng v0.8beta.
+2024-04-24: v0.9beta Support reflink (i.e. Btrfs, XFS) in addition to lvmthin.
+
+2024-03-30: v0.8beta Ease of use update.
+
+2023-07-19: v0.7beta Works with Wyng v0.8beta.
 
 2023-02-10: v0.4b Beta. Adds option passthrough and delete command.
 
@@ -133,7 +164,3 @@ Warranty:  None.  Use at your own risk!
 
 2023-01-19: v0.1a Initial alpha
 
-
-### To Do
-
-* Btrfs support
