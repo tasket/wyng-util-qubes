@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9wip rel 20240415")
+print("wyng-util-qubes v0.9beta rel 20240424")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -96,8 +96,9 @@ def get_qubes_metadata(session):
                             "--save-to="+tarpath, "--session="+session, "receive", mvolname]
     result = run(wyng_cmd, check=True)
 
-    #Enh: get archive listing and check volume presence vs selected qube list
-    result = run(["tar", "-xzf", tarpath], cwd=tmpdir, check=True)
+    tar_cmd = ["tar", "-xzf", tarpath]
+    result = run(tar_cmd, cwd=tmpdir, check=True)
+
     return Core3Qubes(tmpdir+"/"+qubesxml).domains
 
 
@@ -234,6 +235,8 @@ w_options.extend(["--"+x for x in options.wyngopt])
 if not (options.action == "list" and options.pool_info):
     arch_mdata, wvolsessionmap, wvolumemap, wsessionqubes, qube_wvolmap, q_wpriv_wrootmap \
         = get_wyng_directory()
+    if "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240423":
+        x_it(1, "Wyng v0.8 release 20240423 or later is required.")
 
 
 # Process Actions
@@ -276,12 +279,19 @@ elif options.action == "restore":
 
     if not (session := options.session):
         if len(selected) == 1:
-            session = sorted(qube_wvolmap[selected[0]].keys())[-1]
+            slist = [x for x in qube_wvolmap[selected[0]].keys()
+                          if mvolname in wvolsessionmap[x] and selected[0] in wsessionqubes[x]]
+            if not slist:   x_it(1, "No VMs match.")
+            session = sorted(slist)[-1]
         else:
-            raise ValueError("Please specify either a --session or a single qube name to restore.")
+            x_it(1, "Please specify either a --session or a single qube name to restore.")
+    else:
+        if session not in wsessionqubes:   x_it(1, "No sessions match.")
+        selected = set(wsessionqubes[session]) - set(options.exclude)
+        if not selected or mvolname not in wvolsessionmap[session]:   x_it(1, "No VMs match.")
 
+    print("\nVMs selected:", ", ".join(sorted(selected)))
     backups  = get_qubes_metadata(session)   ; pool_vols  = {}
-    selected = set(selected or wsessionqubes[session]) - set(options.exclude)
     os.chdir(tmpdir)
 
     # Match VM selections to backed-up volumes
@@ -289,7 +299,7 @@ elif options.action == "restore":
     appvms    = [x.name for x in backups.values()
                  if x.name not in templates and x.name in selected and x.name != "dom0"]
     if "dom0" in selected:   print("Skipping dom0.")
-    for vm in selected - set(templates + appvms):
+    for vm in set(selected) - set(templates + appvms):
         if vm in wsessionqubes[session]:
             err_out(f"Skipping {vm} (No metadata)")    ; err_domains.append(vm)
 
@@ -401,7 +411,7 @@ elif options.action == "verify":
         if len(selected) == 1:
             session = sorted(qube_wvolmap[selected[0]].keys())[-1]
         else:
-            raise ValueError("Please specify either a --session or a single qube name to verify.")
+            x_it(1, "Please specify either a --session or a single qube name to verify.")
 
     backups  = get_qubes_metadata(session)
     selected = set(selected or wsessionqubes[session]) - set(options.exclude)
@@ -444,7 +454,9 @@ elif options.action == "prune":
 
 
 elif options.action == "delete":
-    assert len(selected) == 1
+    if not len(selected) == 1:
+        x_it(1, "Please specify a single qube name to delete.")
+
     lvolumes = [vol for vm,ses_d in qube_wvolmap.items()
                         for ses,vlst in ses_d.items() for vol in vlst
                         if vm in selected]
@@ -478,7 +490,7 @@ elif options.action == "list":
 
     elif options.session:
         print("\nQubes in session", options.session+":")
-        for qube in wsessionqubes[options.session]:
+        for qube in wsessionqubes.get(options.session, []):
             flag = "*" if mvolname not in wvolsessionmap[options.session] else ""
             print(" ", qube, flag)
 
