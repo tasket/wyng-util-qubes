@@ -1,4 +1,4 @@
-### __wyng-util-qubes__
+## __wyng-util-qubes__
 
 A wrapper for the [Wyng](https://github.com/tasket/wyng-backup) backup system that saves and
 restores both data and settings for Qubes VMs.
@@ -6,9 +6,21 @@ restores both data and settings for Qubes VMs.
 
 ### Requirements
 
-* Qubes OS 4.2 in a thin-LVM configuration
-* wyng-backup v0.8beta4
+* Qubes OS 4.2 in a thin-LVM, Btrfs or XFS configuration
+* [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta4 or later
 
+
+### Installation quick start
+
+See [here](https://github.com/tasket/wyng-backup?tab=readme-ov-file#verifying-code) for instructions on verifying downloaded code with git.  Placing `wyng` and
+`wyng-util-qubes` together in the same directory ensures that the util can find & run Wyng; in the
+example below _/usr/local/bin_ is used, but you can choose a different location.
+
+```
+[user@dom0 ~]$ sudo qubes-dom0-update python3-pycryptodomex python3-zstd
+
+[user@dom0 ~]$ sudo cp -a wyng-backup/src/wyng wyng-util-qubes/src/wyng-util-qubes /usr/local/bin
+```
 
 ### Command usage
 
@@ -164,3 +176,16 @@ Warranty:  None.  Use at your own risk!
 
 2023-01-19: v0.1a Initial alpha
 
+
+
+### Donations
+
+<a href="https://liberapay.com/tasket/donate"><img alt="Donate using Liberapay" src="media/lp_donate.svg" height=54></a>
+
+<a href="https://www.buymeacoffee.com/tasket"><img src="media/buymeacoffee_57.png" height=57></a> <a href="https://www.buymeacoffee.com/tasket">Buy me a coffee!</a>
+
+<a href="https://www.patreon.com/tasket"><img alt="Donate with Patreon" src="media/become_a_patron_button.png" height=50></a>
+
+If you like this project, monetary contributions are welcome and can
+be made through [Liberapay](https://liberapay.com/tasket/donate) or [Buymeacoffee](https://www.buymeacoffee.com/tasket) 
+or [Patreon](https://www.patreon.com/tasket).
