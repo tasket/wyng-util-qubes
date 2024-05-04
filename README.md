@@ -57,11 +57,11 @@ list               | Show contents of archive
 --session=_date-time[,date-time]_ | Select a session or session range by date-time or tag (restore, list, prune).
 --all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
---autoprune=<off|on|full>  | Automatic pruning by calendar date.
+--autoprune=<off\|on\|full\>  | Automatic pruning. See Wyng docs for details.
 --pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --local=_vg/pool_      | Deprecated. Use --pool instead.
---authmin=N            | Extend authentication time by N minutes
+--authmin=N            | Retain authentication for N minutes
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
@@ -102,7 +102,7 @@ Note that `--dest` is assumed to be specified along with each of the commands be
 
 #### list
 
-`list [vm name] [--session=YYYYMMDD-HHMMSS] [--all]`
+`list [vm name] [--session=YYYYMMDD-HHMMSS] [--all] [--pool-info]`
 
 Shows a directory of archive contents.  If no parameters are given, a list of qube / VM names
 is given.
@@ -112,25 +112,32 @@ is given.
 
 `backup [vm names] [--includes] [--exclude=vmname] [--dedup] [--autoprune] `
 
-Backs up VMs to a Wyng archive.  A list of invdividual VM names may be specified, or
+Backs up Qubes VMs to a Wyng archive.  A list of invdividual VM names may be specified, or
 the `--includes` option may be used to include all VMs that are flagged in Qubes
 for automatic inclusion in backups.  The `--dedup` option will attempt to detect
 duplicate data chunks and reduce the amount of data sent to and disk space taken
 by the archive.  Automatic pruning is also possible; see the Wyng Readme doc for
 details.
 
-`restore [vm name] [--session=YYYYMMDD-HHMMSS]`
+#### restore
+`restore [vm name] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname] [--pool=poolname]`
 
-Restores VMs from a Wyng archive.  Individual VM name or a session may be specified.
+Restores VMs from a Wyng archive into a Qubes system.  Individual VM name or a session (containing
+one or more VMs) may be specified.
+
+#### verify
+`verify [vm name] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname]`
+
 
 #### delete
+`delete <vm name>`
 
 Deletes a VM from the archive. Only one VM may be specified at a time.
 
 
 ### Options
 
-`--dest=URL`
+#### --dest=URL
 
 This (non-optional) option specifies where to access the archive.
 It accepts one of the following forms:
@@ -142,24 +149,28 @@ It accepts one of the following forms:
 |__qubes:__//vm-name[/path]                     | Qubes virtual machine
 |__qubes-ssh:__//vm-name:me@example.com[:port][/path]  | SSH server via a Qubes VM
 
-`--includes, -i`
+#### --includes, -i
 
 When backing up, select all Qubes VMs marked as "include in backups".
 
-`--exclude=qube_name`
+#### --exclude=qube_name
 
 Exclude a specific VM from the backup, restore, or verify operation.  May be specified more
 than once.
 
 
-`--dedup, -d`
+#### --dedup, -d
 
 Use deduplication when backing up.  To dedup an entire archive at once, see the
 Wyng documentation on `arch-deduplicate` command.
 
-`--session=_date-time[,date-time]_`
+#### --session=_date-time[,date-time]_
 
 Select a session or session range by date-time or tag. Used with restore, list, and prune.
+
+#### --pool=poolname
+When restore creates new VMs in the system, use the Qubes pool specified by <poolname> for local
+storage instead of the system default.
 
 
 ### Notes
@@ -183,7 +194,7 @@ Use of `--pool` is optional with restore, but should be used if you have setup a
 Qubes pools.  Otherwise, the Qubes default pool will be used when possible.
 
 Most of the notes and tips on using Wyng also apply to `wyng-util-qubes` usage. It is recommended
-to read or at least skim them
+to read or at least skim them to gain general familiarity with Wyng.
 
 
 ### Limitations
