@@ -27,12 +27,12 @@ example below _/usr/local/bin_ is used, but you can choose a different location.
 __wyng-util-qubes__ is run in the Admin VM (dom0):
 
 ```
- wyng-util-qubes backup [--dedup] [-i] [--pool=poolname] [qube_name...]
- wyng-util-qubes restore --session=YYYYMMDD-HHMMSS [--pool=poolname] [qube_name...]
- wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_name...]
- wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_name...]
+ wyng-util-qubes backup [--dedup] [-i] [qube_names...]
+ wyng-util-qubes restore --session=YYYYMMDD-HHMMSS [--pool=poolname] [qube_names...]
+ wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_names...]
+ wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_names...]
  wyng-util-qubes delete <qube_name>
- wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_name...]
+ wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_names...]
 ```
 
 ### Command summary
@@ -50,6 +50,7 @@ list               | Show contents of archive
 
 | _Option_                      | _Description_
 |-------------------------------|--------------
+--dest=_URL_           | URL location of archive.
 --includes, -i         | Select all Qubes VMs marked as "include in backups". (backup)
 --exclude=qube_name    | Exclude a specific VM from the operation (backup, restore, verify)
 --dedup, -d            | Use deduplication. (backup)
@@ -57,7 +58,6 @@ list               | Show contents of archive
 --all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
 --autoprune=<off|on|full>  | Automatic pruning by calendar date.
---dest=_URL_           | URL location of archive.
 --pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --local=_vg/pool_      | Deprecated. Use --pool instead.
@@ -123,6 +123,44 @@ details.
 
 Restores VMs from a Wyng archive.  Individual VM name or a session may be specified.
 
+#### delete
+
+Deletes a VM from the archive. Only one VM may be specified at a time.
+
+
+### Options
+
+`--dest=URL`
+
+This (non-optional) option specifies where to access the archive.
+It accepts one of the following forms:
+
+| _URL Form_ | _Destination Type_
+|----------|-----------------
+|__file:__/path                           | Local filesystem
+|__ssh:__//user@example.com[:port][/path]      | SSH server
+|__qubes:__//vm-name[/path]                     | Qubes virtual machine
+|__qubes-ssh:__//vm-name:me@example.com[:port][/path]  | SSH server via a Qubes VM
+
+`--includes, -i`
+
+When backing up, select all Qubes VMs marked as "include in backups".
+
+`--exclude=qube_name`
+
+Exclude a specific VM from the backup, restore, or verify operation.  May be specified more
+than once.
+
+
+`--dedup, -d`
+
+Use deduplication when backing up.  To dedup an entire archive at once, see the
+Wyng documentation on `arch-deduplicate` command.
+
+`--session=_date-time[,date-time]_`
+
+Select a session or session range by date-time or tag. Used with restore, list, and prune.
+
 
 ### Notes
 
@@ -143,6 +181,9 @@ only backup sessions which include this metadata volume will be accessible for
 
 Use of `--pool` is optional with restore, but should be used if you have setup any non-default
 Qubes pools.  Otherwise, the Qubes default pool will be used when possible.
+
+Most of the notes and tips on using Wyng also apply to `wyng-util-qubes` usage. It is recommended
+to read or at least skim them
 
 
 ### Limitations
