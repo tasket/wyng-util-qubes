@@ -60,8 +60,10 @@ list               | Show contents of archive
 --autoprune=<off\|on\|full\>  | Automatic pruning. See Wyng docs for details.
 --pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
+--pref=_pspec_         | Skip or override VM prefs (restore)
 --local=_vg/pool_      | Deprecated. Use --pool instead.
 --authmin=N            | Retain authentication for N minutes
+--no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
@@ -171,6 +173,12 @@ Select a session or session range by date-time or tag. Used with restore, list, 
 #### --pool=poolname
 When restore creates new VMs in the system, use the Qubes pool specified by <poolname> for local
 storage instead of the system default.
+
+#### --pref=_prefname::c[::value]_
+
+Control how Qubes VM pref _'prefname'_ is handled during `restore`: _'c'_ can be any of 'x', 'n'
+or 's' which stand for exclude (skip), none or string, respectively. The _value_ segment is only
+used with 's'.
 
 
 ### Notes
