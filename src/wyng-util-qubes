@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9wip rel 20240510")
+print("wyng-util-qubes v0.9wip rel 20240511")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -307,7 +307,7 @@ elif options.action == "restore":
         if not selected or mvolname not in wvolsessionmap[session]:   x_it(1, "No VMs match.")
 
     print("\nVMs selected:", ", ".join(sorted(selected)))
-    backups  = get_qubes_metadata(session)   ; pool_vols  = {}   ; opref = options.prefs
+    backups  = get_qubes_metadata(session)   ; pool_vols  = {}   ; opref = options.pref
     pref_excludes = [x[:-3] for x in opref if len(x)>4 and x.endswith("::x")]
     # pref_subst    = {x[:-3]: None for x in opref if len(x)>4 and x.endswith("::n")} \
     # + {y[0]: y[2] for x in opref if len(y := x.split("::", maxsplit=2))==3 and y[1]=="s"}
