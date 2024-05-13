@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9beta rel 20240512")
+print("wyng-util-qubes v0.9beta rel 20240513")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -152,9 +152,9 @@ def handle_wyng_vol_error(p):
 
 def run(cmd, check=True, capt=True, **kwargs):
     capt   = capt and not ("stderr" in kwargs or "stout" in kwargs)
-    result = subprocess.run(cmd, capture_output=capt, **kwargs)
+    result = subprocess.run(cmd, capture_output=capt, check=False, **kwargs)
     if check and result.returncode:
-        if capt:   err_out(f"{result.stdout or ''}\n{result.stderr or ''}")
+        if capt:   err_out(f"Error code {result.returncode}:\n{result.stdout}\n{result.stderr}")
         sys.exit(result.returncode)
     return result
 
@@ -295,7 +295,7 @@ elif options.action == "restore":
 
     if not (session := options.session):
         if len(selected) == 1:
-            slist = [x for x in qube_wvolmap[selected[0]].keys()
+            slist = [x for x in qube_wvolmap.get(selected[0]) or {}
                           if mvolname in wvolsessionmap[x] and selected[0] in wsessionqubes[x]]
             if not slist:   x_it(1, "No VMs match.")
             session = sorted(slist)[-1]
@@ -352,6 +352,9 @@ elif options.action == "restore":
                                  (q_wpriv_wrootmap[target][session][ii],
                                   get_vm_volname(target, ii)[0])  )
 
+    if any((x.properties.get("template_for_dispvms") for x in backups.values()
+            if x.name in selected)):
+        print("Warning:  DispVMs based on restored templates will be shut down.")
     if not options.unattended:
         print("Warning:  Restoring to existing VMs will overwrite them.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
@@ -376,6 +379,13 @@ elif options.action == "restore":
         vm.tags.add("restore_incomplete")
         subdir = "vm-templates/" if qube.klass == "TemplateVM" else "appvms/"
 
+        # Shutdown relevant vms, incl dvms that are based on dvm template
+        if not vm.is_halted():   vm.shutdown(force=True)
+        for dvm in (x for x in live_qubes if x.klass=="DispVM" and not x.is_halted
+                   and qube.properties.get("template_for_dispvms") and x.template == qube.name):
+            dvm.shutdown(force=True)
+
+        # Restore nested xml (firewall) files
         if exists(subdir+qube.name+"/"+fwfile):
             shutil.copyfile(subdir+qube.name+"/"+fwfile, qubesvar+subdir+target+"/"+fwfile)
         elif exists(qubesvar+subdir+target+"/"+fwfile):
@@ -437,7 +447,7 @@ elif options.action == "restore":
         for tag in (x for x in vm.tags if x not in qube.tags):
             vm.tags.remove(tag)
 
-        if vm.klass == "TemplateVM":
+        if vm.klass in ("TemplateVM","StandaloneVM"):
             print(" Running qvm-sync-appmenus for", vm.name)
             vm.start()   ; run(["sudo", "-u", "#1000", "qvm-sync-appmenus", vm.name])
             vm.shutdown()
@@ -450,6 +460,7 @@ elif options.action == "restore":
 elif options.action == "verify":
     if not (session := options.session):
         if len(selected) == 1:
+            if selected[0] not in qubes_wvolmap:   x_it(1, "No VMs match.")
             session = sorted(qube_wvolmap[selected[0]].keys())[-1]
         else:
             x_it(1, "Please specify either a --session or a single qube name to verify.")
