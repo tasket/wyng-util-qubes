@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9beta rel 20240513")
+print("wyng-util-qubes v0.9wip rel 20240514")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -152,6 +152,7 @@ def handle_wyng_vol_error(p):
 
 def run(cmd, check=True, capt=True, **kwargs):
     capt   = capt and not ("stderr" in kwargs or "stout" in kwargs)
+    if debug:   print(cmd)
     result = subprocess.run(cmd, capture_output=capt, check=False, **kwargs)
     if check and result.returncode:
         if capt:   err_out(f"Error code {result.returncode}:\n{result.stdout}\n{result.stderr}")
@@ -202,7 +203,7 @@ parser.add_argument("-w", dest="wyngopt", action="append", default=[],
 parser.add_argument("--no-auto-rename", action="store_true", default=False,
                     help="Don't rename archived volumes for LVM or Reflink (backup)")
 parser.add_argument("--include-disposable", action="store_true", default=False,
-                    help="Include disposable VMs (experimental)")
+                    help="Include disposable VMs (restore)")
 parser.add_argument("--unattended", "-u", action="store_true", default=False,
                     help="Unattended operation")
 parser.add_argument("--debug", action="store_true", default=False, help="Show debug info")
@@ -244,20 +245,25 @@ if not (options.action == "list" and options.pool_info):
         = get_wyng_directory()
     if "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240423":
         x_it(1, "Wyng v0.8 release 20240423 or later is required.")
+    if not wvolumemap.get(mvolname) and options.action != "backup":
+        x_it(1, "No Qubes backup sessions.")
 
 
 # Process Actions
 if options.action == "backup":
 
     pool_vols = {}
-    includes  = [x.name for x in live_qubes if x.include_in_backups and options.includes]
-    for vmname in sorted(set(selected+includes)):
+    includes  = [x.name for x in live_qubes if x.include_in_backups and options.includes
+                 and x.name not in options.exclude]
+    to_backup = sorted(set(selected+includes))
+
+    print("\nSelected for backup:\n", ", ".join(to_backup), "\n")
+    for vmname in to_backup:
         vm = live_qubes[vmname]
         if vmname in ("dom0","default-mgmt-dvm") or vmname not in live_qubes \
         or vmname in options.exclude:
-            print("Skipping", vmname)    ; continue
-        if vm.klass == "DispVM" and not options.include_disposable:
-            print("Skipping DispVM", vmname)    ; continue
+            print(" Skipping", vmname)    ; continue
+        if vm.klass == "DispVM":   continue
 
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
@@ -286,7 +292,6 @@ if options.action == "backup":
     if options.dedup:      w_options.append("-d")
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{tarpath}", "send"]
 
-    if debug:   print(wyng_cmd)
     p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
 
 
@@ -294,49 +299,55 @@ elif options.action == "restore":
     ## Restore Qubes VMs with settings
 
     if not (session := options.session):
-        if len(selected) == 1:
-            slist = [x for x in qube_wvolmap.get(selected[0]) or {}
-                          if mvolname in wvolsessionmap[x] and selected[0] in wsessionqubes[x]]
-            if not slist:   x_it(1, "No VMs match.")
-            session = sorted(slist)[-1]
-        else:
-            x_it(1, "Please specify either a --session or a single qube name to restore.")
-    else:
-        if session not in wsessionqubes:   x_it(1, "No sessions match.")
-        selected = set(wsessionqubes[session]) - set(options.exclude)
-        if not selected or mvolname not in wvolsessionmap[session]:   x_it(1, "No VMs match.")
+        if not selected:
+            x_it(1, "Please specify either a --session or qube names to restore.")
+        session = wvolumemap[mvolname][-1]
+    elif session not in wvolumemap[mvolname]:
+        x_it(1, "No sessions match.")
 
-    print("\nVMs selected:", ", ".join(sorted(selected)))
-    backups  = get_qubes_metadata(session)   ; pool_vols  = {}   ; opref = options.pref
+    # Match VM selections to backed-up volumes
+    backups   = get_qubes_metadata(session)   ; pool_vols  = {}   ; opref = options.pref
+    dispvms   = {x.name for x in backups.values() if x.klass=="DispVM"}
+    available = ((set(backups) - {"dom0"}) & wsessionqubes[session]) | dispvms
+    templates = [x.name for x in backups.values() if x.klass=="TemplateVM" and x.name in available]
+    appvms    = [x.name for x in backups.values() if x.klass!="DispVM" and x.name in available
+                 and x.name not in templates]
+
+    if selected:
+        notmatched = set(selected) - available    ; err_domains.extend(list(notmatched))
+        selected   = set(selected) & available
+    else:
+        notmatched = None
+        selected   = available - ({} if options.include_disposable else dispvms) \
+                   - set(options.exclude)
+
+    # Re-order selection list for templates first and dispvms last
+    selected     = [x for x in (templates+appvms+sorted(dispvms)) if x in selected]
+
+    print(f"\nVMs matched in session {session}:\n", ", ".join(selected) or "(none)")
+    if notmatched:
+        print(f"\nNot matched:\n", ", ".join(sorted(notmatched)))
+
     pref_excludes = [x[:-3] for x in opref if len(x)>4 and x.endswith("::x")]
     # pref_subst    = {x[:-3]: None for x in opref if len(x)>4 and x.endswith("::n")} \
     # + {y[0]: y[2] for x in opref if len(y := x.split("::", maxsplit=2))==3 and y[1]=="s"}
 
     os.chdir(tmpdir)
 
-    # Match VM selections to backed-up volumes
-    templates = [x.name for x in backups.values() if x.klass== "TemplateVM" and x.name in selected]
-    appvms    = [x.name for x in backups.values()
-                 if x.name not in templates and x.name in selected and x.name != "dom0"]
-    if "dom0" in selected:   print("Skipping dom0.")
-    for vm in set(selected) - set(templates + appvms):
-        if vm in wsessionqubes[session]:
-            err_out(f"Skipping {vm} (No metadata)")    ; err_domains.append(vm)
-
-    for target in templates + appvms:
+    for target in selected:
         qube = backups[target]
 
         # Find local qube or create one
         if target in (x.name for x in live_qubes):
-            vm = live_qubes[target]    ; vmklass = vm.klass
+            vm = live_qubes[target]
             if not vm.is_halted():   vm.kill()
-            if vmklass != qube.klass:
+            if vm.klass != qube.klass:
                 vm.tags.add("restore_incomplete")
                 try:
                     del(live_qubes[vm.name])
                 except:
                     err_out("Class mismatch %s vs %s for qube named '%s'."
-                            % (vmklass, qube.klass, qube.name))
+                            % (vm.klass, qube.klass, qube.name))
                     err_domains.append(qube.name)
                     continue
             setattr(vm, "label", qube.label)
@@ -344,6 +355,8 @@ elif options.action == "restore":
             vm = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
                                     pool=options.pool)
             vm.tags.add("restore_incomplete")
+
+        if vm.klass == "DispVM":   continue
 
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
@@ -354,17 +367,18 @@ elif options.action == "restore":
 
     if any((x.properties.get("template_for_dispvms") for x in backups.values()
             if x.name in selected)):
-        print("Warning:  DispVMs based on restored templates will be shut down.")
+        print("Warning:  DispVMs based on restored disp. templates will be shut down.")
     if not options.unattended:
         print("Warning:  Restoring to existing VMs will overwrite them.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     # Restore data volumes
+    print("\nRestoring VM data volumes:")
     json.dump(pool_vols, open(jsontmp := tmpdir+"/wuq_vols.lst", "w"))
+    if debug:   print("JSON:\n", json.dumps(pool_vols))
     wyng_cmd = w_options + ["-u", "--sparse-write", "--local-from="+jsontmp,
                 "--session="+session, "receive"]
-    if debug:   print(wyng_cmd)
-    p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
+    p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
     elif p.returncode > 0:
@@ -373,7 +387,7 @@ elif options.action == "restore":
     # Selectively restore qube properties
     # Remove or reset properties that are not in the backup metadata
     print("\nRestoring VM settings:")
-    for target in templates + appvms:
+    for target in selected:
         print(" "+target, flush=True)
         qube = backups[target]    ; vm = live_qubes[target]
         vm.tags.add("restore_incomplete")
@@ -381,7 +395,7 @@ elif options.action == "restore":
 
         # Shutdown relevant vms, incl dvms that are based on dvm template
         if not vm.is_halted():   vm.shutdown(force=True)
-        for dvm in (x for x in live_qubes if x.klass=="DispVM" and not x.is_halted
+        for dvm in (x for x in live_qubes.values() if x.klass=="DispVM" and not x.is_halted
                    and qube.properties.get("template_for_dispvms") and x.template == qube.name):
             dvm.shutdown(force=True)
 
@@ -459,15 +473,17 @@ elif options.action == "restore":
 
 elif options.action == "verify":
     if not (session := options.session):
-        if len(selected) == 1:
-            if selected[0] not in qubes_wvolmap:   x_it(1, "No VMs match.")
-            session = sorted(qube_wvolmap[selected[0]].keys())[-1]
+        if selected:
+            session = wvolumemap[mvolname][-1]
         else:
-            x_it(1, "Please specify either a --session or a single qube name to verify.")
+            x_it(1, "Please specify either a --session or qube names to verify.")
 
     backups  = get_qubes_metadata(session)
-    selected = set(selected or wsessionqubes[session]) - set(options.exclude)
-    if not selected:   x_it(1, "No matching contents")
+    selected = set(backups) & ((set(selected) & wsessionqubes[session]) if selected \
+               else (wsessionqubes[session] - set(options.exclude)))
+
+    print(f"\nVMs matched in session {session}:\n", ", ".join(sorted(selected)) or "(none)", "\n")
+    if not selected:   x_it(1, "")
 
     lvolumes = [vol for vm,ses_d in qube_wvolmap.items()
                         for ses,vlst in ses_d.items() for vol in vlst
@@ -475,8 +491,7 @@ elif options.action == "verify":
 
     wyng_cmd = w_options + ["--session="+session, "verify"] \
              + [mvolname] + lvolumes
-    if debug:   print(wyng_cmd)
-    p = run(wyng_cmd, text=True, check=False, stderr=subprocess.PIPE)
+    p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
     elif p.returncode > 0:
@@ -505,8 +520,7 @@ elif options.action == "prune":
     if options.autoprune: wyng_cmd.append("--autoprune="+options.autoprune)
 
     wyng_cmd += ["prune"] + lvolumes
-    if debug:   print(wyng_cmd)
-    run(wyng_cmd, text=True, stderr=subprocess.PIPE)
+    run(wyng_cmd, text=True, stdout=sys.stdout, stderr=sys.stderr)
 
 
 elif options.action == "delete":
@@ -523,8 +537,7 @@ elif options.action == "delete":
 
     for vol in lvolumes:
         wyng_cmd = w_options + ["-u", "delete", vol]
-        if debug:   print(wyng_cmd)
-        run(wyng_cmd)
+        run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
 
 
 elif options.action == "list":
@@ -533,6 +546,17 @@ elif options.action == "list":
 
     if options.pool_info:
         print_pools()
+
+    elif options.session:
+        session = options.session
+        if session not in wvolumemap[mvolname]:
+            x_it(1, f"No match for session {session}.")
+
+        backups  = get_qubes_metadata(session)
+        dispvms  = {x.name for x in backups.values() if x.klass=="DispVM"}
+        print("\nQubes in session", session+":")
+        for qube in sorted((wsessionqubes[session] & set(backups)) | dispvms):
+            print("(D)" if qube in dispvms else "   ", qube)
 
     elif selected:
         for qube, seslist in qube_wvolmap.items():
@@ -544,12 +568,6 @@ elif options.action == "list":
                 for ses in sorted(xml_seslist):   print(ses)
             else:
                 list_sessions(xml_seslist)
-
-    elif options.session:
-        print("\nQubes in session", options.session+":")
-        for qube in wsessionqubes.get(options.session, []):
-            flag = "*" if mvolname not in wvolsessionmap[options.session] else ""
-            print(" ", qube, flag)
 
     else:
         print("\n* Archived Qubes VMs *")

@@ -28,8 +28,8 @@ __wyng-util-qubes__ is run in the Admin VM (dom0):
 
 ```
  wyng-util-qubes backup [--dedup] [-i] [qube_names...]
- wyng-util-qubes restore --session=YYYYMMDD-HHMMSS [--pool=poolname] [qube_names...]
- wyng-util-qubes verify --session=YYYYMMDD-HHMMSS [qube_names...]
+ wyng-util-qubes restore [--session=YYYYMMDD-HHMMSS] [--pool=poolname] [qube_names...]
+ wyng-util-qubes verify [--session=YYYYMMDD-HHMMSS] [qube_names...]
  wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_names...]
  wyng-util-qubes delete <qube_name>
  wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_names...]
@@ -58,11 +58,11 @@ list               | Show contents of archive
 --all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
 --autoprune=<off\|on\|full\>  | Automatic pruning. See Wyng docs for details.
---pool=_qubespool_     | Override default 'vm-pool' Qubes local storage pool. (restore)
+--pool=_qubespool_     | Override default Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --pref=_pspec_         | Skip or override VM prefs (restore)
---local=_vg/pool_      | Deprecated. Use --pool instead.
---authmin=N            | Retain authentication for N minutes
+--include-disposable   | Include disposable VMs (restore)
+--authmin=_N_          | Retain authentication for _N_ minutes
 --no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
@@ -104,10 +104,10 @@ Note that `--dest` is assumed to be specified along with each of the commands be
 
 #### list
 
-`list [vm name] [--session=YYYYMMDD-HHMMSS] [--all] [--pool-info]`
+`list [vm names] [--session=YYYYMMDD-HHMMSS] [--all] [--pool-info]`
 
 Shows a directory of archive contents.  If no parameters are given, a list of qube / VM names
-is given.
+is given.  Disposable VMs will not be shown unless a session is specified.
 
 
 #### backup
@@ -122,13 +122,14 @@ by the archive.  Automatic pruning is also possible; see the Wyng Readme doc for
 details.
 
 #### restore
-`restore [vm name] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname] [--pool=poolname]`
+`restore [vm names] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname] [--include-disposable] [--pool=poolname]`
 
-Restores VMs from a Wyng archive into a Qubes system.  Individual VM name or a session (containing
-one or more VMs) may be specified.
+Restores VMs from a Wyng archive into a Qubes system.  VM names and/or a session (containing
+one or more VMs) may be specified.  If a session is not specified, the last session will be
+auto-selected; if only a session is specified, all of the VMs in the session will be selected.
 
 #### verify
-`verify [vm name] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname]`
+`verify [vm names] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname]`
 
 
 #### delete
@@ -139,7 +140,7 @@ Deletes a VM from the archive. Only one VM may be specified at a time.
 
 ### Options
 
-#### --dest=URL
+#### --dest=_URL_
 
 This (non-optional) option specifies where to access the archive.
 It accepts one of the following forms:
@@ -151,11 +152,13 @@ It accepts one of the following forms:
 |__qubes:__//vm-name[/path]                     | Qubes virtual machine
 |__qubes-ssh:__//vm-name:me@example.com[:port][/path]  | SSH server via a Qubes VM
 
+Note that paths are optional for all except ___file:___ and they are always absolute.
+
 #### --includes, -i
 
 When backing up, select all Qubes VMs marked as "include in backups".
 
-#### --exclude=qube_name
+#### --exclude=_qube_name_
 
 Exclude a specific VM from the backup, restore, or verify operation.  May be specified more
 than once.
@@ -170,15 +173,14 @@ Wyng documentation on `arch-deduplicate` command.
 
 Select a session or session range by date-time or tag. Used with restore, list, and prune.
 
-#### --pool=poolname
+#### --pool=_poolname_
 When restore creates new VMs in the system, use the Qubes pool specified by <poolname> for local
 storage instead of the system default.
 
-#### --pref=_prefname::c[::value]_
+#### --pref=_prefname::x_
 
-Control how Qubes VM pref _'prefname'_ is handled during `restore`: _'c'_ can be any of 'x', 'n'
-or 's' which stand for exclude (skip), none or string, respectively. The _value_ segment is only
-used with 's'.
+Control how Qubes VM pref _'prefname'_ is handled during `restore` where _'::x'_ indicates skipping
+the specified pref instead of trying to set it.
 
 
 ### Notes
@@ -186,17 +188,18 @@ used with 's'.
 To address the thorny issue of restoring VM settings on Qubes OS, a best-effort process is used for
 individually setting, resetting or removing each value depending on whether the property exists
 in the backup and whether its writable and has a default value according to Qubes.  This differs
-from the `qubes-backup` method which always creates new, differently-named VMs when restoring,
+from the `qubes-backup` method which often creates new, differently-named VMs when restoring,
 often resulting in extra, unwanted VMs which don't connect to each other or reference appropriate
 templates as the user originally intended.  Since users' security expectations, scripts and
 configuration are likely to hinge on VM names, `wyng-util-qubes` addresses a security risk posed by
 Qubes' built-in tools.
 
-For each qube/VM, both private and root volumes are backed up if the qube type is
+For each regular qube/VM, both private and root volumes are backed up if the qube type is
 either template or standalone.  Otherwise, the backup will include only a private volume.
 A 'wyng-qubes-metadata' volume will also be added to the backup session.  By default,
 only backup sessions which include this metadata volume will be accessible for
-`restore` operations.
+`restore` operations.  DispVMs do not have any disk volume, and their definitions are always
+included in backup sessions.
 
 Use of `--pool` is optional with restore, but should be used if you have setup any non-default
 Qubes pools.  Otherwise, the Qubes default pool will be used when possible.
