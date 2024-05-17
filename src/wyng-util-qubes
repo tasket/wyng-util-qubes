@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9wip rel 20240514")
+print("wyng-util-qubes v0.9beta rel 20240515")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -202,8 +202,8 @@ parser.add_argument("-w", dest="wyngopt", action="append", default=[],
                     help="Pass an option to Wyng directly.")
 parser.add_argument("--no-auto-rename", action="store_true", default=False,
                     help="Don't rename archived volumes for LVM or Reflink (backup)")
-parser.add_argument("--include-disposable", action="store_true", default=False,
-                    help="Include disposable VMs (restore)")
+parser.add_argument("--include-disposable", choices=("off","on"), default="off",
+                    help="Include disposable VMs (restore, list)")
 parser.add_argument("--unattended", "-u", action="store_true", default=False,
                     help="Unattended operation")
 parser.add_argument("--debug", action="store_true", default=False, help="Show debug info")
@@ -318,7 +318,7 @@ elif options.action == "restore":
         selected   = set(selected) & available
     else:
         notmatched = None
-        selected   = available - ({} if options.include_disposable else dispvms) \
+        selected   = available - ({} if options.include_disposable=="on" else dispvms) \
                    - set(options.exclude)
 
     # Re-order selection list for templates first and dispvms last
@@ -338,7 +338,7 @@ elif options.action == "restore":
         qube = backups[target]
 
         # Find local qube or create one
-        if target in (x.name for x in live_qubes):
+        if target in live_qubes:
             vm = live_qubes[target]
             if not vm.is_halted():   vm.kill()
             if vm.klass != qube.klass:
@@ -556,6 +556,7 @@ elif options.action == "list":
         dispvms  = {x.name for x in backups.values() if x.klass=="DispVM"}
         print("\nQubes in session", session+":")
         for qube in sorted((wsessionqubes[session] & set(backups)) | dispvms):
+            if options.include_disposable=="off" and qube in dispvms:   continue
             print("(D)" if qube in dispvms else "   ", qube)
 
     elif selected:

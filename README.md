@@ -6,7 +6,7 @@ restores both data and settings for Qubes VMs.
 
 ### Requirements
 
-* Qubes OS 4.2 in a thin-LVM, Btrfs or XFS configuration
+* Qubes OS 4.1 in a thin-LVM, Btrfs or XFS configuration
 * [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta4 or later
 
 
@@ -57,11 +57,11 @@ list               | Show contents of archive
 --session=_date-time[,date-time]_ | Select a session or session range by date-time or tag (restore, list, prune).
 --all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
---autoprune=<off\|on\|full\>  | Automatic pruning. See Wyng docs for details.
+--autoprune=_<off\|on\|full\>_  | Automatic pruning. See Wyng docs for details.
 --pool=_qubespool_     | Override default Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --pref=_pspec_         | Skip or override VM prefs (restore)
---include-disposable   | Include disposable VMs (restore)
+--include-disposable=_<off\|on\>_ | Include disposable VMs (restore, list)
 --authmin=_N_          | Retain authentication for _N_ minutes
 --no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
 --unattended, -u       | Operate without prompts.
@@ -107,7 +107,8 @@ Note that `--dest` is assumed to be specified along with each of the commands be
 `list [vm names] [--session=YYYYMMDD-HHMMSS] [--all] [--pool-info]`
 
 Shows a directory of archive contents.  If no parameters are given, a list of qube / VM names
-is given.  Disposable VMs will not be shown unless a session is specified.
+is given.  Disposable VMs will not be shown unless a session is specified along
+with the `--include-disposable=on` option.
 
 
 #### backup
@@ -124,18 +125,27 @@ details.
 #### restore
 `restore [vm names] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname] [--include-disposable] [--pool=poolname]`
 
-Restores VMs from a Wyng archive into a Qubes system.  VM names and/or a session (containing
+Restores VMs from a Wyng archive into a Qubes system.  VM names and/or a _session_ (containing
 one or more VMs) may be specified.  If a session is not specified, the last session will be
 auto-selected; if only a session is specified, all of the VMs in the session will be selected.
 
 #### verify
 `verify [vm names] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname]`
 
+Verifies the integrity of archived VMs. Specifying a _session_ by itself will verify
+all VMs in that session.
+
+#### prune
+`prune [vm names] [--session=YYYYMMDD-HHMMSS] [--autoprune=<off|on|full>]`
+
+Removes older backup sessions from the archive to reclaim space. The latest session
+cannot be selected for removal. See Wyng documentation for specifics on using `--autoprune`.
 
 #### delete
 `delete <vm name>`
 
-Deletes a VM from the archive. Only one VM may be specified at a time.
+Deletes a VM from the archive. Only one VM may be specified at a time. To remove
+a _session_, see the `prune` command.
 
 
 ### Options
