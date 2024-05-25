@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9beta rel 20240515")
+print("wyng-util-qubes v0.9beta rel 20240524")
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 from qubesadmin.backup.core3 import Core3Qubes
@@ -206,6 +206,7 @@ parser.add_argument("--include-disposable", choices=("off","on"), default="off",
                     help="Include disposable VMs (restore, list)")
 parser.add_argument("--unattended", "-u", action="store_true", default=False,
                     help="Unattended operation")
+parser.add_argument("--verbose", action="store_true", default=False, help="Show more status info")
 parser.add_argument("--debug", action="store_true", default=False, help="Show debug info")
 parser.add_argument("--meta-dir", dest="metadir", default="", help="Use alternate metadata path.")
 parser.add_argument("qubenames", nargs="*")
@@ -365,7 +366,7 @@ elif options.action == "restore":
                                  (q_wpriv_wrootmap[target][session][ii],
                                   get_vm_volname(target, ii)[0])  )
 
-    if any((x.properties.get("template_for_dispvms") for x in backups.values()
+    if any((x.properties.get("template_for_dispvms") in {"True"} for x in backups.values()
             if x.name in selected)):
         print("Warning:  DispVMs based on restored disp. templates will be shut down.")
     if not options.unattended:
@@ -376,6 +377,7 @@ elif options.action == "restore":
     print("\nRestoring VM data volumes:")
     json.dump(pool_vols, open(jsontmp := tmpdir+"/wuq_vols.lst", "w"))
     if debug:   print("JSON:\n", json.dumps(pool_vols))
+    if options.verbose or not options.unattended:   w_options.append("--verbose")
     wyng_cmd = w_options + ["-u", "--sparse-write", "--local-from="+jsontmp,
                 "--session="+session, "receive"]
     p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
@@ -437,10 +439,18 @@ elif options.action == "restore":
 
         for prop, pval in qube.features.items():
             if debug:   print("feature:", prop, "=", pval)
-            vm.features[prop] = pval
+            try:
+                vm.features[prop] = pval
+            except Exception as err:
+                print("Error setting feature %s.%s to %s: %s" % (qube.name, prop, pval, err))
+                err_domains.append(qube.name)
         for prop in (x for x in vm.features if x not in qube.features):
             if debug:   print("del feature:", prop)
-            del(vm.features[prop])
+            try:
+                del(vm.features[prop])
+            except Exception as err:
+                print("Error removing feature %s.%s: %s" % (qube.name, prop, err))
+                err_domains.append(qube.name)
 
         for bus in vm.devices:
             busobj  = vm.devices[bus]
@@ -457,9 +467,18 @@ elif options.action == "restore":
                     print("Error attaching device %s:%s to %s: %s" % (bus,ident,qube.name,err))
                     err_domains.append(qube.name)
 
-        for tag in qube.tags:   vm.tags.add(tag)
+        for tag in qube.tags:
+            try:
+                vm.tags.add(tag)
+            except Exception as err:
+                print("Error adding tag %s.%s: %s" % (qube.name, tag, err))
+                err_domains.append(qube.name)
         for tag in (x for x in vm.tags if x not in qube.tags):
-            vm.tags.remove(tag)
+            try:
+                vm.tags.remove(tag)
+            except Exception as err:
+                print("Error removing tag %s.%s: %s" % (qube.name, tag, err))
+                err_domains.append(qube.name)
 
         if vm.klass in ("TemplateVM","StandaloneVM"):
             print(" Running qvm-sync-appmenus for", vm.name)
@@ -489,8 +508,8 @@ elif options.action == "verify":
                         for ses,vlst in ses_d.items() for vol in vlst
                         if vm in selected and ses==session]
 
-    wyng_cmd = w_options + ["--session="+session, "verify"] \
-             + [mvolname] + lvolumes
+    if options.verbose or not options.unattended:   w_options.append("--verbose")
+    wyng_cmd = w_options + ["--session="+session, "verify"] + lvolumes
     p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
@@ -580,4 +599,6 @@ elif options.action == "list":
 
 
 # Cleanup
-if err_domains:   x_it(2, "\nErrors for VMs: "+" ".join(err_domains))
+if err_domains:   x_it(2, "\nErrors for VMs: "+" ".join(sorted(set(err_domains))))
+
+if options.action != "list":   print("\nDone.")
