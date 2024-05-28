@@ -195,6 +195,9 @@ the specified pref instead of trying to set it.
 
 ### Notes
 
+Most of the notes and tips on using Wyng also apply to `wyng-util-qubes` usage. It is recommended
+to read or at least skim them to gain general familiarity with Wyng.
+
 To address the thorny issue of restoring VM settings on Qubes OS, a best-effort process is used for
 individually setting, resetting or removing each value depending on whether the property exists
 in the backup and whether its writable and has a default value according to Qubes.  This differs
@@ -214,8 +217,7 @@ included in backup sessions.
 Use of `--pool` is optional with restore, but should be used if you have setup any non-default
 Qubes pools.  Otherwise, the Qubes default pool will be used when possible.
 
-Most of the notes and tips on using Wyng also apply to `wyng-util-qubes` usage. It is recommended
-to read or at least skim them to gain general familiarity with Wyng.
+When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata size exhaustion. Apart from Wyng snapshots on top of Qubes snapshots adding a bit more stress to Thin LVM, the answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
 
 
 ### Limitations
