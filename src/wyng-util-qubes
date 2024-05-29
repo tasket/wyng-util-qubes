@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9beta rel 20240526", flush=True)
+print("wyng-util-qubes v0.9beta rel 20240527", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -271,10 +271,10 @@ if options.action == "backup":
 
     print("\nSelected for backup:\n", ", ".join(to_backup), "\n", flush=True)
     for vmname in to_backup:
-        vm = live_qubes[vmname]
-        if vmname in ("dom0","default-mgmt-dvm") or vmname not in live_qubes \
-        or vmname in options.exclude:
+        if vmname in ("dom0","default-mgmt-dvm") or vmname not in live_qubes:
             print(" Skipping", vmname)    ; continue
+
+        vm = live_qubes[vmname]
         if vm.klass == "DispVM":   continue
 
         for ii in ("private","root"):
@@ -395,7 +395,7 @@ elif options.action == "restore":
     json.dump(pool_vols, open(jsontmp := tmpdir+"/wuq_vols.lst", "w"))
     if debug:   print("JSON:\n", json.dumps(pool_vols))
     if options.verbose or not options.unattended:   w_options.append("--verbose")
-    wyng_cmd = w_options + ["-u", "--sparse-write", "--local-from="+jsontmp,
+    wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
                 "--session="+session, "receive"]
     p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
     if p.returncode == 2:
@@ -566,16 +566,11 @@ elif options.action == "prune":
                         for ses,vlst in ses_d.items() for vol in vlst
                         if vm in selected and ses==options.session]
 
-    if not options.unattended:
-        print("Warning:  Data cannot be recovered after deleting it from the archive.")
-        if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
+    if options.session: w_options.append("--session="+options.session)
+    if options.allbefore: w_options.append("--all-before")
+    if options.autoprune: w_options.append("--autoprune="+options.autoprune)
 
-    wyng_cmd = w_options + ["-u"]
-    if options.session: wyng_cmd.append("--session="+options.session)
-    if options.allbefore: wyng_cmd.append("--all-before")
-    if options.autoprune: wyng_cmd.append("--autoprune="+options.autoprune)
-
-    wyng_cmd += ["prune"] + lvolumes
+    wyng_cmd = w_options + ["prune"] + lvolumes
     run(wyng_cmd, text=True, stdout=sys.stdout, stderr=sys.stderr)
 
 
