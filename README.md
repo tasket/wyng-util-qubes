@@ -136,10 +136,14 @@ Verifies the integrity of archived VMs. Specifying a _session_ by itself will ve
 all VMs in that session.
 
 #### prune
-`prune [vm names] [--session=YYYYMMDD-HHMMSS] [--autoprune=<off|on|full>]`
+`prune [vm names] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [--all] [--autoprune=<off|on|full>]`
 
 Removes older backup sessions from the archive to reclaim space. The latest session
-cannot be selected for removal. See Wyng documentation for specifics on using `--autoprune`.
+cannot be selected for removal. If an entire session is to be removed, `--all` (refering
+to all volumes) must be specified with `--session`, otherwise VM names may be used to limit
+pruning to those VMs. The session may also be a date-time range
+with the start and end separated by a comma.
+See Wyng documentation for specifics on using `prune` and `--autoprune`.
 
 #### delete
 `delete <vm name>`

@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9beta rel 20240527", flush=True)
+print("wyng-util-qubes v0.9beta rel 20240528", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -76,8 +76,9 @@ def get_wyng_directory():
         #    wtagsession.setdefault((tag,cmnt), set()).add(sname)
 
     for sname, vols in wvolsessionmap.items():
-        if s := set((get_qubename_parts(x)[1] for x in vols
-                     if x.endswith(("-root","-private","/root.img","/private.img")))):
+        if s := set(get_qubename_parts(x)[1] for x in vols
+                    if x.endswith(("-root","-private","/root.img","/private.img"))
+                    and mvolname in wvolsessionmap[sname]):
             wsessionqubes[sname] = s
 
     # make qube_wvolmap...
@@ -147,7 +148,7 @@ def list_sessions(slist):
     rows, extra = divmod(size := len(slist), c := columns)   ; rows += bool(extra)
     if extra and rows < 3 and (columns - extra) > 1:   c -= (columns - extra) // 2
     for r in range(rows):
-        print("  ".join(sorted(slist[x*rows+r][2:] for x in range(c) if x*rows+r < size)))
+        print("  ".join(sorted(slist[x*rows+r] for x in range(c) if x*rows+r < size)))
 
 
 def ts_to_datetime(ts):
@@ -247,16 +248,17 @@ if options.local:   x_it(1, "Please use --pool instead of --local")
 if options.metadir:    w_options.append("--meta-dir="+options.metadir)
 if options.unattended: w_options.append("-u")
 if options.authmin:    w_options.append("--authmin="+options.authmin)
-if options.all and options.action != "list":
-    x_it(1, "--all may only be used with 'list'.")
+if options.all and options.action not in ("list","prune"):
+    x_it(1, "--all may only be used with list or prune.")
 w_options.extend(["--"+x for x in options.wyngopt])
 
 
 if not (options.action == "list" and options.pool_info):
     arch_mdata, wvolsessionmap, wvolumemap, wsessionqubes, wsessiontags, wtagsession, \
         qube_wvolmap, q_wpriv_wrootmap = get_wyng_directory()
-    if "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240423":
-        x_it(1, "Wyng v0.8 release 20240423 or later is required.")
+    if arch_mdata["wversion"][:3] != "0.8" \
+    or "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240527":
+        x_it(1, "Wyng v0.8 release 20240527 or later is required.")
     if not wvolumemap.get(mvolname) and options.action != "backup":
         x_it(1, "No Qubes backup sessions.")
 
@@ -559,18 +561,20 @@ elif options.action == "verify":
 
 
 elif options.action == "prune":
-    assert options.session or options.autoprune and not options.exclude
-    #Enh: pass exclude vols to wyng --volex
 
-    lvolumes = [vol for vm,ses_d in qube_wvolmap.items()
-                        for ses,vlst in ses_d.items() for vol in vlst
-                        if vm in selected and ses==options.session]
+    if not (session := options.session) and not options.autoprune:
+        x_it(1, "Please specify a session, an autoprune mode or both.")
 
-    if options.session: w_options.append("--session="+options.session)
+    lvolumes = { vol for vm, ses_d in qube_wvolmap.items()
+                        for ses, vlst in ses_d.items()
+                            for vol in vlst if vm in selected }
+
+    if session: w_options.append("--session="+session)
+    if options.all: w_options.append("--all")
     if options.allbefore: w_options.append("--all-before")
     if options.autoprune: w_options.append("--autoprune="+options.autoprune)
 
-    wyng_cmd = w_options + ["prune"] + lvolumes
+    wyng_cmd = w_options + ["prune"] + list(lvolumes)
     run(wyng_cmd, text=True, stdout=sys.stdout, stderr=sys.stderr)
 
 
@@ -608,7 +612,7 @@ elif options.action == "list":
 
     elif options.session:
         session = options.session
-        if session not in wvolumemap[mvolname]:
+        if session not in wsessionqubes:
             x_it(1, f"No match for session {session}.")
 
         backups  = get_qubes_metadata(session)    ; tags = {}
