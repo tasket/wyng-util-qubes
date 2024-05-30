@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9beta rel 20240528", flush=True)
+print("wyng-util-qubes v0.9 beta rel 20240529", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -257,8 +257,8 @@ if not (options.action == "list" and options.pool_info):
     arch_mdata, wvolsessionmap, wvolumemap, wsessionqubes, wsessiontags, wtagsession, \
         qube_wvolmap, q_wpriv_wrootmap = get_wyng_directory()
     if arch_mdata["wversion"][:3] != "0.8" \
-    or "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240527":
-        x_it(1, "Wyng v0.8 release 20240527 or later is required.")
+    or "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240528":
+        x_it(1, "Wyng v0.8 release 20240528 or later is required.")
     if not wvolumemap.get(mvolname) and options.action != "backup":
         x_it(1, "No Qubes backup sessions.")
 
