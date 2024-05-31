@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9 beta rel 20240529", flush=True)
+print("wyng-util-qubes v0.9 beta rel 20240530", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -62,10 +62,10 @@ def get_wyng_directory():
     # q_wpriv_wrootmap: (dict)qube_name -> (dict)session -> (dict)voltype -> arch_vol_name
 
     wvolsessionmap, wvolumemap, qube_wvolmap, q_wpriv_wrootmap = {}, {}, {}, {}
-    wsessionqubes, wsessiontags, wtagsession = {}, {}, {}
+    wvolqubemap, wsessionqubes, wsessiontags, wtagsession = {}, {}, {}, {}
     volname  = qubename = None
     wyng_cmd = w_options + ["--json", "list"]
-    jdata = json.loads((j := run(wyng_cmd, text=True).stdout)[j.find("{"):])
+    jdata = json.loads((j := run(wyng_cmd).stdout)[j.find("{"):])
 
     for volname, sname, ses in ((vk, sk[2:], sv) for vk, vv in jdata["volumes"].items()
                                 for sk, sv in vv["sessions"].items()):
@@ -93,8 +93,9 @@ def get_wyng_directory():
         else:
             continue
         q_wpriv_wrootmap.setdefault(qubename, {}).setdefault(sname,{})[voltype] = vol
+        wvolqubemap[vol] = qubename
 
-    return jdata, wvolsessionmap, wvolumemap, wsessionqubes, wsessiontags, wtagsession, \
+    return jdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
            qube_wvolmap, q_wpriv_wrootmap
 
 
@@ -157,15 +158,18 @@ def ts_to_datetime(ts):
 
 
 def handle_wyng_vol_error(p):
-    errln = [x.partition("volumes(s)") for x in p.stdout.splitlines() if "volumes(s):" in x]
-    err_domains.extend(errln.split())
-    err_out("(Wyng) "+"".join(errln))
+    text  = (p.stdout or "") + "\n" + (p.stderr or "")
+    errln = [x for x in text.splitlines() if x.startswith("Error on volumes:")][0]
+    vols  = list(map(str.strip, (errln.split(":", maxsplit=1)[-1].split(","))))
+    vms   = [y for x,y in wvolqubemap.items() if x in vols]
+    err_domains.extend(vms)
+    err_out(text if debug else errln)
 
 
 def run(cmd, check=True, capt=True, **kwargs):
     capt   = capt and not ("stderr" in kwargs or "stout" in kwargs)
     if debug:   print(cmd)
-    result = subprocess.run(cmd, capture_output=capt, check=False, **kwargs)
+    result = subprocess.run(cmd, capture_output=capt, check=False, text=True, **kwargs)
     if check and result.returncode:
         if capt:   err_out(f"Error code {result.returncode}:\n{result.stdout}\n{result.stderr}")
         sys.exit(result.returncode)
@@ -254,7 +258,7 @@ w_options.extend(["--"+x for x in options.wyngopt])
 
 
 if not (options.action == "list" and options.pool_info):
-    arch_mdata, wvolsessionmap, wvolumemap, wsessionqubes, wsessiontags, wtagsession, \
+    arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
         qube_wvolmap, q_wpriv_wrootmap = get_wyng_directory()
     if arch_mdata["wversion"][:3] != "0.8" \
     or "wdate" not in arch_mdata or arch_mdata["wdate"] < "20240528":
@@ -264,6 +268,7 @@ if not (options.action == "list" and options.pool_info):
 
 
 # Process Actions
+
 if options.action == "backup":
 
     pool_vols = {}
@@ -399,7 +404,7 @@ elif options.action == "restore":
     if options.verbose or not options.unattended:   w_options.append("--verbose")
     wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
                 "--session="+session, "receive"]
-    p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
+    p = run(wyng_cmd, check=False, stdout=sys.stdout, stderr=sys.stderr)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
     elif p.returncode > 0:
@@ -448,13 +453,17 @@ elif options.action == "restore":
                     print("Error setting %s.%s to %s: %s" % (qube.name, prop, pval, err))
                     err_domains.append(qube.name)
             else:
-                propdef = vm.property_get_default(prop)
-                if debug:   print(prop,"Def =", propdef)
+                #propdef = vm.property_get_default(prop)
                 try:
-                    setattr(vm, prop, propdef)
+                    if not vm.property_is_default(prop):
+                        if debug:   print(prop, "- Reset to default")
+                        delattr(vm, prop)
+                    else:
+                        if debug:   print(prop, "- Skip default")
+
                 except Exception as err:
-                    if "cannot be set" not in repr(err):
-                        print("Error:", prop, propdef)   ; err_domains.append(qube.name)
+                    err_out(f"Cannot process '{prop}' default:\n{repr(err)}")
+                    err_domains.append(qube.name)
 
         for prop, pval in qube.features.items():
             if debug:   print("feature:", prop, "=", pval)
@@ -549,7 +558,7 @@ elif options.action == "verify":
 
     if options.verbose or not options.unattended:   w_options.append("--verbose")
     wyng_cmd = w_options + ["--session="+session, "verify"] + lvolumes
-    p = run(wyng_cmd, text=True, check=False, stdout=sys.stdout, stderr=sys.stderr)
+    p = run(wyng_cmd, check=False, stdout=sys.stdout, stderr=sys.stderr)
     if p.returncode == 2:
         handle_wyng_vol_error(p)
     elif p.returncode > 0:
@@ -575,7 +584,7 @@ elif options.action == "prune":
     if options.autoprune: w_options.append("--autoprune="+options.autoprune)
 
     wyng_cmd = w_options + ["prune"] + list(lvolumes)
-    run(wyng_cmd, text=True, stdout=sys.stdout, stderr=sys.stderr)
+    run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
 
 
 elif options.action == "delete":
@@ -650,7 +659,7 @@ elif options.action == "list":
 
 
 # Cleanup
-if err_domains:   x_it(2, "\nErrors for VMs: "+" ".join(sorted(set(err_domains))))
+if err_domains:   x_it(2, "\nErrors for VMs: "+", ".join(sorted(set(err_domains))))
 
 if options.action != "list":   print("\nDone.")
 
