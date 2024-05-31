@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9 beta rel 20240530", flush=True)
+print("wyng-util-qubes v0.9 beta rel 20240531", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -167,7 +167,7 @@ def handle_wyng_vol_error(p):
 
 
 def run(cmd, check=True, capt=True, **kwargs):
-    capt   = capt and not ("stderr" in kwargs or "stout" in kwargs)
+    capt   = capt and not ("stderr" in kwargs or "stdout" in kwargs)
     if debug:   print(cmd)
     result = subprocess.run(cmd, capture_output=capt, check=False, text=True, **kwargs)
     if check and result.returncode:
@@ -385,6 +385,9 @@ elif options.action == "restore":
 
         for ii in ("private","root"):
             if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
+            if not q_wpriv_wrootmap[target][session].get(ii):
+                err_out(f"Error: No {ii} volume available for {vm.klass} '{target}'.")
+                err_domains.append(target)    ; continue
             # Create a dict of {pool.pathname: [(volname, alias), ...]}
             pool_vols.setdefault("/".join(qpools_d[vm.volumes[ii].pool].path), []).append(
                                  (q_wpriv_wrootmap[target][session][ii],
@@ -510,9 +513,12 @@ elif options.action == "restore":
 
         if vm.klass in ("TemplateVM","StandaloneVM"):
             print(" Running qvm-sync-appmenus for", vm.name)
-            vm.start()   ; run(["sudo", "-u", "#1000", "qvm-sync-appmenus", vm.name])
-            vm.shutdown()
-        run(["sudo", "-u", "#1000", "qvm-appmenus", "--update", vm.name])
+            try:
+                vm.start(); run(["sudo", "-u", "#1000", "qvm-sync-appmenus", vm.name], check=False)
+                vm.shutdown()
+            except:
+                pass
+        run(["sudo", "-u", "#1000", "qvm-appmenus", "--update", vm.name], check=False)
 
         if "restore_incomplete" in vm.tags and target not in err_domains:
             vm.tags.remove("restore_incomplete")
