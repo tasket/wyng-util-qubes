@@ -159,11 +159,11 @@ def ts_to_datetime(ts):
 
 def handle_wyng_vol_error(p):
     text  = (p.stdout or "") + "\n" + (p.stderr or "")
-    errln = [x for x in text.splitlines() if x.startswith("Error on volumes:")][0]
-    vols  = list(map(str.strip, (errln.split(":", maxsplit=1)[-1].split(","))))
+    errln = [x for x in text.splitlines() if x.startswith("Error on volumes:")]
+    vols  = list(map(str.strip, (errln[0].split(":", maxsplit=1)[-1].split(",")))) if errln else []
     vms   = [y for x,y in wvolqubemap.items() if x in vols]
     err_domains.extend(vms)
-    err_out(text if debug else errln)
+    err_out(text if debug else "\n".join(errln))
 
 
 def run(cmd, check=True, capt=True, **kwargs):
