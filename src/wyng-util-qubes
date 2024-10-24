@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9 beta rel 20240918", flush=True)
+print("wyng-util-qubes v0.9 beta rel 20241022", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -378,7 +378,7 @@ elif options.action == "restore":
             vm = live_qubes[target]
             if not vm.is_halted():   vm.kill()
             if vm.klass != qube.klass:
-                vm.tags.add("restore_incomplete")
+                vm.tags.add("backup-restore-in-progress")
                 try:
                     del(live_qubes[vm.name])
                 except:
@@ -390,7 +390,7 @@ elif options.action == "restore":
         else:
             vm = qdaemon.add_new_vm(qube.klass, label=qube.label, name=target,
                                     pool=options.pool)
-            vm.tags.add("restore_incomplete")
+            vm.tags.add("backup-restore-in-progress")
 
         if vm.klass == "DispVM":   continue
 
@@ -430,7 +430,7 @@ elif options.action == "restore":
     for target in selected:
         print(" "+target, flush=True)
         qube = backups[target]    ; vm = live_qubes[target]
-        vm.tags.add("restore_incomplete")
+        vm.tags.add("backup-restore-in-progress")
         subdir = "vm-templates/" if qube.klass == "TemplateVM" else "appvms/"
 
         # Shutdown relevant vms, incl dvms that are based on dvm template
@@ -531,8 +531,8 @@ elif options.action == "restore":
                 pass
         run(["sudo", "-u", "#1000", "qvm-appmenus", "--update", vm.name], check=False)
 
-        if "restore_incomplete" in vm.tags and target not in err_domains:
-            vm.tags.remove("restore_incomplete")
+        if "backup-restore-in-progress" in vm.tags and target not in err_domains:
+            vm.tags.remove("backup-restore-in-progress")
 
 
 elif options.action == "verify":
