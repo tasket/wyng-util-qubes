@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2024 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-print("wyng-util-qubes v0.9 beta rel 20241022", flush=True)
+print("wyng-util-qubes v0.9 beta rel 20241229", flush=True)
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -278,7 +278,7 @@ if options.action == "backup":
 
     print("\nSelected for backup:\n", ", ".join(to_backup), "\n", flush=True)
     for vmname in to_backup:
-        if vmname in ("dom0","default-mgmt-dvm") or vmname not in live_qubes:
+        if vmname == "dom0" or vmname not in live_qubes:
             print(" Skipping", vmname)    ; continue
 
         vm = live_qubes[vmname]
@@ -320,8 +320,13 @@ if options.action == "backup":
 
     # Set each VM's backup_timestamp
     ts = int(time.time())
-    for vm in (live_qubes[x] for x in to_backup if x in live_qubes
-                    and x not in ("dom0", "default-mgmt-dvm") and x not in err_domains):
+    for vmname in (x for x in to_backup if x in live_qubes
+                    and x != "dom0" and x not in err_domains):
+        try:
+            vm = live_qubes[vmname]
+        except:
+            if debug:   print("Skip timestamp:", vmname)
+            continue
         vm.backup_timestamp = ts
 
 
