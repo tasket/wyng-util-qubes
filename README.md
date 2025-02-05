@@ -6,7 +6,7 @@ restores both data and settings for Qubes VMs.
 
 ### Requirements
 
-* Qubes OS 4.1 in a thin-LVM, Btrfs or XFS configuration
+* Qubes OS 4.2 in a thin-LVM, Btrfs or XFS configuration
 * [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta4 or later
 
 
@@ -74,28 +74,25 @@ list               | Show contents of archive
 ```
 
 $ # Start by creating a fresh Wyng archive:
-$ sudo wyng arch-init --dest=file:/mnt/backups/laptop3.backup
+$ sudo wyng arch-init --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 
 $ # Make wyng backups of the VMs _work_ and _personal_
-$ sudo wyng-util-qubes backup work personal --dest=file:/mnt/backups/laptop3.backup
+$ sudo wyng-util-qubes backup work personal --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 
 $ # Restore VM _personal_ from a wyng archive
-$ sudo wyng-util-qubes restore personal --dest=file:/mnt/backups/laptop3.backup
+$ sudo wyng-util-qubes restore personal --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 ```
 
 The above examples show the creation and use of an archive named 'laptop3.backup' located in
-the local '/mnt/backups' path.  For non-local archives, use one of the other URL types supported
-by Wyng, such as 'qubes://' for backing up to a VM filesystem, or 'qubes-ssh://' for backing up
-to remote via an ssh-equipped VM...
+the '/mnt/backups' path of the _sys-usb_ VM.  Other destination types may be used such as 'qubes-ssh://' for backing up to remote via an SSH-equipped VM...
 
 ```
-$ sudo wyng arch-init --dest=qubes://sys-backup/mnt/backups/laptop3.backup
-
-$ sudo wyng arch-init --dest=qubes-ssh://sys-backup:user@192.168.1.10/mnt/backups/laptop3.backup
+$ sudo wyng arch-init --dest=qubes-ssh://remote-vm:user@192.168.1.10/mnt/backups/laptop3.backup
 ```
+See the _Options_ section for a description of all `--dest` types.
 
 
 ### Commands
@@ -194,7 +191,9 @@ storage instead of the system default.
 #### --pref=_prefname::x_
 
 Control how Qubes VM pref _'prefname'_ is handled during `restore` where _'::x'_ indicates skipping
-the specified pref instead of trying to set it.
+the specified pref instead of trying to set it.  This can be used as a workaround allowing
+`restore` to complete when an
+archived VM setting isn't compatible with the current system configuration.
 
 
 ### Notes
@@ -211,17 +210,19 @@ templates as the user originally intended.  Since users' security expectations, 
 configuration are likely to hinge on VM names, `wyng-util-qubes` addresses a security risk posed by
 Qubes' built-in tools.
 
-For each regular qube/VM, both private and root volumes are backed up if the qube type is
-either template or standalone.  Otherwise, the backup will include only a private volume.
-A 'wyng-qubes-metadata' volume will also be added to the backup session.  By default,
-only backup sessions which include this metadata volume will be accessible for
-`restore` operations.  DispVMs do not have any disk volume, and their definitions are always
-included in backup sessions.
+For each qube/VM, the private and/or root volumes are automatically backed up and restored depending on the type of VM,
+and a 'wyng-qubes-metadata' volume will always be added to the backup session as well.
+By default, only backup sessions which include this metadata volume will be accessible for
+`restore` operations, so backups performed directly with `wyng send` are unlikely to have
+the metadata needed to make them accessible from `wyng-util-qubes` (the volumes can of course
+still be accessed with `wyng`).
 
-Use of `--pool` is optional with restore, but should be used if you have setup any non-default
-Qubes pools.  Otherwise, the Qubes default pool will be used when possible.
+Use of `--pool` is optional with restore, but should be used when you wish to restore VMs to
+non-default Qubes storage pools (if you have to ask what that is, you probably don't need
+this option).  Otherwise, the Qubes default pool will be used for VMs that do not yet exist before the restore, the VM's pool setting will be used for existing VMs.  `--pool` does not
+override the pools of already existing VMs, so its recommended to delete or move the VMs before `restore` if a change of VM location is desired.
 
-When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata size exhaustion. Apart from Wyng snapshots on top of Qubes snapshots adding a bit more stress to Thin LVM, the answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
+When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata size exhaustion, a condition that can cause your system storage to go offline or become corrupted. Since Wyng adds its own snapshots on top of Qubes snapshots, using Wyng adds a bit more demand for Thin LVM metadata. The answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
 
 
 ### Limitations
@@ -232,7 +233,7 @@ VMs with matching names _will be overwritten._
 
 
 ### License and Warranty
-GPL3 License.
+GPLv3 License.
 
 Warranty:  None.  Use at your own risk!
 
@@ -261,10 +262,10 @@ Warranty:  None.  Use at your own risk!
 
 <a href="https://liberapay.com/tasket/donate"><img alt="Donate using Liberapay" src="media/lp_donate.svg" height=54></a>
 
+<a href="https://ko-fi.com/tasket"><img src="media/ko-fi.png" height=57></a> <a href="https://ko-fi.com/tasket">Ko-Fi donate</a>
+
 <a href="https://www.buymeacoffee.com/tasket"><img src="media/buymeacoffee_57.png" height=57></a> <a href="https://www.buymeacoffee.com/tasket">Buy me a coffee!</a>
 
-<a href="https://www.patreon.com/tasket"><img alt="Donate with Patreon" src="media/become_a_patron_button.png" height=50></a>
 
 If you like this project, monetary contributions are welcome and can
-be made through [Liberapay](https://liberapay.com/tasket/donate) or [Buymeacoffee](https://www.buymeacoffee.com/tasket) 
-or [Patreon](https://www.patreon.com/tasket).
+be made through [Liberapay](https://liberapay.com/tasket/donate) or [Ko-Fi](https://ko-fi.com/tasket) or [Buymeacoffee](https://www.buymeacoffee.com/tasket).
