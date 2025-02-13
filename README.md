@@ -27,17 +27,19 @@ example below _/usr/local/bin_ is used, but you can choose a different location.
 __wyng-util-qubes__ is run in the Admin VM (dom0):
 
 ```
- wyng-util-qubes backup [--dedup] [-i] [qube_names...]
- wyng-util-qubes restore [--session=YYYYMMDD-HHMMSS] [--pool=poolname] [qube_names...]
- wyng-util-qubes verify [--session=YYYYMMDD-HHMMSS] [qube_names...]
- wyng-util-qubes prune [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_names...]
- wyng-util-qubes delete <qube_name>
- wyng-util-qubes list [--session=YYYYMMDD-HHMMSS] [qube_names...]
+ wyng-util-qubes create --dest=<URL>
+ wyng-util-qubes backup --dest=<URL> [--dedup] [-i] [qube_names...]
+ wyng-util-qubes restore --dest=<URL> [--session=YYYYMMDD-HHMMSS] [--pool=poolname] [qube_names...]
+ wyng-util-qubes verify --dest=<URL> [--session=YYYYMMDD-HHMMSS] [qube_names...]
+ wyng-util-qubes prune --dest=<URL> [--autoprune=opt] [--all-before] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [qube_names...]
+ wyng-util-qubes delete --dest=<URL> <qube_name>
+ wyng-util-qubes list --dest=<URL> [--session=YYYYMMDD-HHMMSS] [qube_names...]
 ```
 
 ### Command summary
 | _Command_                     | _Description_
 |-------------------------------|--------------
+create             | Create a new Wyng archive
 backup             | Store Qubes VMs in the Wyng archive as a session (i.e. snapshot)
 restore            | Restore Qubes VMs from the Wyng archive
 verify             | Verify archive data integrity
@@ -74,7 +76,7 @@ list               | Show contents of archive
 ```
 
 $ # Start by creating a fresh Wyng archive:
-$ sudo wyng arch-init --dest=qubes://sys-usb/mnt/backups/laptop3.backup
+$ sudo wyng-util-qubes create --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 
 $ # Make wyng backups of the VMs _work_ and _personal_
@@ -182,11 +184,10 @@ Wyng documentation on `arch-deduplicate` command.
 
 #### --session=_date-time[,date-time]_
 
-Select a session or session range by date-time or tag. Used with restore, list, and prune.
+Select a session or session range by date-time or tag. Used with restore, verify, list, and prune.
 
 #### --pool=_poolname_
-When restore creates new VMs in the system, use the Qubes pool specified by <poolname> for local
-storage instead of the system default.
+When restore creates new VMs in the system, use the Qubes storage pool specified by <poolname> instead of the system default.
 
 #### --pref=_prefname::x_
 
@@ -217,12 +218,9 @@ By default, only backup sessions which include this metadata volume will be acce
 the metadata needed to make them accessible from `wyng-util-qubes` (the volumes can of course
 still be accessed with `wyng`).
 
-Use of `--pool` is optional with restore, but should be used when you wish to restore VMs to
-non-default Qubes storage pools (if you have to ask what that is, you probably don't need
-this option).  Otherwise, the Qubes default pool will be used for VMs that do not yet exist before the restore, the VM's pool setting will be used for existing VMs.  `--pool` does not
-override the pools of already existing VMs, so its recommended to delete or move the VMs before `restore` if a change of VM location is desired.
+When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata space exhaustion, a condition that can cause your system storage to go offline or become corrupted. Since Wyng adds its own snapshots on top of Qubes snapshots, using Wyng adds a bit more demand for Thin LVM metadata. The answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
 
-When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata size exhaustion, a condition that can cause your system storage to go offline or become corrupted. Since Wyng adds its own snapshots on top of Qubes snapshots, using Wyng adds a bit more demand for Thin LVM metadata. The answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
+Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here the metadata stress manifests as a slowdown of system operations.  This can be avoided by periodically defragmenting your Btrfs Qubes storage pools like so: `sudo btrfs filesystem defrag -fr -t256K /var/lib/qubes` approximately once per week or month, depending on how active your system is.
 
 
 ### Limitations
