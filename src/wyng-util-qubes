@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 wip rel 20250119"
+_program = "wyng-util-qubes v0.9 wip rel 20250213"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -68,7 +68,7 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
     wyng_cmd = ctx.w_options[:]    ; run_opts = {"env": os.environ.copy()}
     if passphrase:
         assert type(passphrase) is str
-        w_options.append("--passcmd=echo $WYNGPASS")
+        wyng_cmd.append("--passcmd=echo $WYNGPASS")
         run_opts["env"]["WYNGPASS"] = passphrase
 
     res = run(wyng_cmd + ["--json", "list"], stdin=stdin or subprocess.DEVNULL,
