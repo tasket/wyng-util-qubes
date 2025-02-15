@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 wip rel 20250213"
+_program = "wyng-util-qubes v0.9 wip rel 20250214"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -113,18 +113,6 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
            qube_wvolmap, q_wpriv_wrootmap
 
 
-def get_qubes_metadata(ctx, session):
-    # Receive metadata
-    wyng_cmd = ctx.w_options + ["-u", "--quiet", "--save-to="+ctx.tarpath,
-                                "--session="+session, "receive", mvolname]
-    result = run(wyng_cmd, check=True)
-
-    tar_cmd = ["tar", "-xzf", ctx.tarpath]
-    result = run(tar_cmd, cwd=ctx.tmpdir, check=True)
-
-    return Core3Qubes(ctx.tmpdir+"/"+qubesxml).domains
-
-
 def get_vm_volname(vm, voltype="private"):
     assert voltype in ("private","root")
     vol = vm.volumes[voltype]
@@ -204,7 +192,7 @@ def parse_options(args, pdefs):
     for x, y in pdefs:  parser.add_argument(*x, **y)
     options = parser.parse_args(args)
     options.action = options.action.lower()
-    options.unattended = options.unattended or not sys.stdin.isatty()
+    options.unattended = __name__ != "__main__" or not sys.stdin.isatty() or options.unattended
 
     debug = options.debug
 
@@ -300,7 +288,7 @@ def _do_backup(ctx, selected=None):
         vm.backup_timestamp = ts
 
 
-def _do_restore(ctx, selected=None):
+def _do_restore(ctx, selected=None, session=None):
 
     arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
        qube_wvolmap, q_wpriv_wrootmap = ctx.mappings
@@ -308,7 +296,7 @@ def _do_restore(ctx, selected=None):
     w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qubes.domains
     err_domains = ctx.err_domains
 
-    if not (session := options.session):
+    if not (session := session or options.session):
         if not selected:
             x_it(1, "Please specify either a --session or qube names to restore.")
 
@@ -322,7 +310,7 @@ def _do_restore(ctx, selected=None):
         x_it(1, "No sessions match.")
 
     # Match VM selections to backed-up volumes
-    backups   = get_qubes_metadata(ctx, session)   ; opref = options.pref
+    backups   = ctx.get_qubes_metadata(session)   ; opref = options.pref
     dispvms   = {x.name for x in backups.values() if x.klass=="DispVM"}
     available = ((set(backups) - {"dom0"}) & wsessionqubes[session]) | dispvms
     templates = [x.name for x in backups.values() if x.klass=="TemplateVM" and x.name in available]
@@ -514,14 +502,14 @@ def _do_restore(ctx, selected=None):
             vm.tags.remove("backup-restore-in-progress")
 
 
-def _do_verify(ctx, selected=None):
+def _do_verify(ctx, selected=None, session=None):
 
     arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
        qube_wvolmap, q_wpriv_wrootmap = ctx.mappings
 
     w_options = ctx.w_options[:]    ; options = ctx.options
 
-    if not (session := options.session):
+    if not (session := session or options.session):
         if not selected:
             x_it(1, "Please specify either a --session or qube names to restore.")
 
@@ -535,7 +523,7 @@ def _do_verify(ctx, selected=None):
         x_it(1, "No sessions match.")
 
     # Match VM selections to backed-up volumes
-    backups   = get_qubes_metadata(ctx, session)
+    backups   = ctx.get_qubes_metadata(session)
     dispvms   = {x.name for x in backups.values() if x.klass=="DispVM"}
     available = ((set(backups) - {"dom0"}) & wsessionqubes[session]) | dispvms
 
@@ -567,14 +555,14 @@ def _do_verify(ctx, selected=None):
             err_out(f"No settings metadata for qube {vm}.")    ; ctx.err_domains.append(vm)
 
 
-def _do_prune(ctx, selected=None):
+def _do_prune(ctx, selected=None, session=None):
 
     arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
        qube_wvolmap, q_wpriv_wrootmap = ctx.mappings
 
     w_options = ctx.w_options[:]    ; options = ctx.options
 
-    if not (session := options.session) and not options.autoprune:
+    if not (session := session or options.session) and not options.autoprune:
         x_it(1, "Please specify a session, an autoprune mode or both.")
 
     lvolumes = { vol for vm, ses_d in qube_wvolmap.items()
@@ -613,12 +601,13 @@ def _do_delete(ctx, selected):
         run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
 
 
-def show_list(ctx, selected=None):
+def show_list(ctx, selected=None, session=None):
 
     arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
        qube_wvolmap, q_wpriv_wrootmap = ctx.mappings
 
     options = ctx.options    ; selected = selected or ctx.selected
+    session = session or options.session
 
     print("\nURL", arch_mdata["url"])
     arch_time = ts_to_datetime(float(arch_mdata["updated_at"]))
@@ -633,12 +622,11 @@ def show_list(ctx, selected=None):
     if options.pool_info:
         print_pools()
 
-    elif options.session:
-        session = options.session
+    elif session:
         if session not in wsessionqubes:
             x_it(1, f"No match for session {session}.")
 
-        backups  = get_qubes_metadata(ctx, session)    ; tags = {}
+        backups  = ctx.get_qubes_metadata(session)    ; tags = {}
         dispvms  = {x.name for x in backups.values() if x.klass=="DispVM"}
         print("\nQubes in session", session+":")
         for qube in sorted((wsessionqubes[session] & set(backups)) | dispvms):
@@ -712,19 +700,30 @@ class WyngQubesContext:
 
     def __exit__(self, *args, **kwargs):   self.close()
 
+    def get_qubes_metadata(self, session):
+        # Receive metadata
+        wyng_cmd = self.w_options + ["-u", "--quiet", "--save-to="+self.tarpath,
+                                    "--session="+session, "receive", mvolname]
+        result = run(wyng_cmd, check=True)
+
+        tar_cmd = ["tar", "-xzf", self.tarpath]
+        result = run(tar_cmd, cwd=self.tmpdir, check=True)
+
+        return Core3Qubes(self.tmpdir+"/"+qubesxml).domains
+
     def backup(self, vms=None):
         res = _do_backup(self, vms or self.selected)   ; self.close()
         return res
 
-    def restore(self, vms=None):
+    def restore(self, session=None, vms=None):
         res = _do_restore(self, vms or self.selected)   ; self.close()
         return res
 
-    def verify(self, vms=None):
+    def verify(self, session=None, vms=None):
         res = _do_verify(self, vms or self.selected)   ; self.close()
         return res
 
-    def prune(self, vms=None):
+    def prune(self, session=None, vms=None):
         res = _do_prune(self, vms or self.selected)   ; self.close()
         return res
 
