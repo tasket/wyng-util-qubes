@@ -229,6 +229,15 @@ Apart from data, which is restored verbatim, restoration of VM settings may be i
 no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing
 VMs with matching names _will be overwritten._
 
+### Python API
+
+`wyng-util-qubes` may also be imported as a module in Python.  Its recommended to copy or link it to a Python library path with the util using module naming conventions, like so:
+```
+sudo cp -a src/wyng /usr/lib64/python3.11/site-packages
+sudo cp -a src/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
+```
+
+See [issue #37](https://github.com/tasket/wyng-util-qubes/issues/37) for details on module usage.
 
 ### License and Warranty
 GPLv3 License.

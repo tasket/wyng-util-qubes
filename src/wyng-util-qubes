@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 wip rel 20250214"
+_program = "wyng-util-qubes v0.9 beta rel 20250215"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -211,15 +211,13 @@ def parse_options(args, pdefs):
 
 ##  MAIN ACTIONS  ##
 
-def _do_create(ctx, passphrase="zxcvbzxcvb"):
+def _do_create(ctx, passphrase=None):
     if not ctx.options.dest:
         x_it(1, "Dest URL is required to create an archive.")
 
     wyng_cmd  = ctx.w_options[:] + ["arch-init"]
-    kw = {"input": (passphrase+"\n")*2} if passphrase else {}
-
     p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr,
-            input="zxcvbzxcvb\nzxcvbzxcvb\n")
+            input=(passphrase+"\n")*2 if passphrase else None)
 
     if p.returncode:
         handle_wyng_error(ctx, p)
