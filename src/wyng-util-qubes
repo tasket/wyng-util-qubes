@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250215"
+_program = "wyng-util-qubes v0.9 beta rel 20250220"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -78,8 +78,8 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
     jdata = json.loads((j:= res.stdout)[j.find("{"):])
 
     if jdata["wversion"][:3] != "0.8" \
-    or "wdate" not in jdata or jdata["wdate"] < "20240528":
-        x_it(1, "Wyng v0.8 release 20240528 or later is required.")
+    or "wdate" not in jdata or jdata["wdate"] < "20250215":
+        x_it(1, "Wyng v0.8 release 20250215 or later is required.")
 
     for volname, sname, ses in ((vk, sk[2:], sv) for vk, vv in jdata["volumes"].items()
                                 for sk, sv in vv["sessions"].items()):
@@ -215,9 +215,13 @@ def _do_create(ctx, passphrase=None):
     if not ctx.options.dest:
         x_it(1, "Dest URL is required to create an archive.")
 
-    wyng_cmd  = ctx.w_options[:] + ["arch-init"]
-    p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr,
-            input=(passphrase+"\n")*2 if passphrase else None)
+    wyng_cmd = ctx.w_options[:]    ; run_opts = {"env": os.environ.copy()}
+    if passphrase:
+        assert type(passphrase) is str
+        wyng_cmd.append("--passcmd=echo $WYNGPASS")
+        run_opts["env"]["WYNGPASS"] = passphrase
+
+    p = run(wyng_cmd + ["arch-init"], stdout=sys.stdout, stderr=sys.stderr, **run_opts)
 
     if p.returncode:
         handle_wyng_error(ctx, p)
@@ -586,17 +590,21 @@ def _do_delete(ctx, selected):
     if not len(selected) == 1:
         x_it(1, "Please specify a single qube name to delete.")
 
-    lvolumes = [vol for vm,ses_d in qube_wvolmap.items()
-                        for ses,vlst in ses_d.items() for vol in vlst
-                        if vm in selected]
+    lvolumes = { vol for vm, ses_d in qube_wvolmap.items()
+                        for ses, vlst in ses_d.items()
+                            for vol in vlst if vm in selected }
 
     if not options.unattended:
         print("Warning:  Data cannot be recovered after deleting it from the archive.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     for vol in lvolumes:
-        wyng_cmd = w_options + ["-u", "delete", vol]
-        run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
+        wyng_cmd = w_options + ["-u", "--verbose" if options.verbose else "--quiet",
+                                "delete", vol]
+        try:
+            run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
+        except Exception as e:
+            ctx.err_domains.append(wvolqubemap[vol])
 
 
 def show_list(ctx, selected=None, session=None):
@@ -661,7 +669,7 @@ def show_list(ctx, selected=None, session=None):
 ##  API for wyng-util-qubes: Wyng backup system on Qubes OS  ##
 
 #   Instantiate WyngQubesContext() with a sys.argv style list of wyng-util-qubes options.
-#   For example: util = WyngQubesContext(["--dest=qubes://sys-usb/mnt/backup/laptop.wbak"])
+#   For example: util = WyngQubesContext(["list", "--dest=qubes://sys-usb/mnt/backup/laptop.wbak"])
 #   The object will have a set of metadata mappings available, starting with 'arch_mdata', a basic
 #   heirarchical dir of the Wyng archive. See 'get_wyng_directory()' function for details.
 #   Available Wyng functions from this class are: create*, backup, restore, verify, prune, delete.
