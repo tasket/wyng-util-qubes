@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250220"
+_program = "wyng-util-qubes v0.9 wip rel 20250222"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -160,15 +160,15 @@ def ts_to_datetime(ts):
 
 
 def handle_wyng_error(ctx, p):
+    etext  = (p.stdout or "") + "\n" + (p.stderr or "")
     if (rc := p.returncode) == 2:
-        text  = (p.stdout or "") + "\n" + (p.stderr or "")
-        errln = [x for x in text.splitlines() if x.startswith("Error on volumes:")]
+        errln = [x for x in etext.splitlines() if x.startswith("Error on volumes:")]
         vols  = list(map(str.strip, (errln[0].split(":", maxsplit=1)[-1].split(",")))) if errln else []
         vms   = [y for x,y in wvolqubemap.items() if x in vols]
         ctx.err_domains.extend(vms)
-        err_out(text if debug else "\n".join(errln))
+        err_out(etext if debug else "\n".join(errln))
     elif rc:
-        x_it(rc, (p.stdout+p.stderr).strip())
+        x_it(rc, etext.strip())
 
 
 def run(cmd, check=True, capt=True, **kwargs):
@@ -232,7 +232,7 @@ def _do_backup(ctx, selected=None):
     arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
        qube_wvolmap, q_wpriv_wrootmap = ctx.mappings
 
-    w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qubes.domains
+    w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qadmin.domains
     includes  = [x.name for x in live_qubes if x.include_in_backups and options.includes
                  and x.name not in options.exclude]
     to_backup = sorted(set(selected+includes))
@@ -295,7 +295,7 @@ def _do_restore(ctx, selected=None, session=None):
     arch_mdata, wvolsessionmap, wvolumemap, wvolqubemap, wsessionqubes, wsessiontags, \
        qube_wvolmap, q_wpriv_wrootmap = ctx.mappings
 
-    w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qubes.domains
+    w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qadmin.domains
     err_domains = ctx.err_domains
 
     if not (session := session or options.session):
@@ -358,7 +358,7 @@ def _do_restore(ctx, selected=None, session=None):
                     continue
             setattr(vm, "label", qube.label)
         else:
-            vm = qadmin.add_new_vm(qube.klass, label=qube.label, name=target,
+            vm = ctx.qadmin.add_new_vm(qube.klass, label=qube.label, name=target,
                                        pool=options.pool)
             vm.tags.add("backup-restore-in-progress")
 
@@ -634,15 +634,18 @@ def show_list(ctx, selected=None, session=None):
 
         backups  = ctx.get_qubes_metadata(session)    ; tags = {}
         dispvms  = {x.name for x in backups.values() if x.klass=="DispVM"}
-        print("\nQubes in session", session+":")
+        print("\nVMs in session", session+":")
         for qube in sorted((wsessionqubes[session] & set(backups)) | dispvms):
-            if options.include_disposable=="off" and qube in dispvms:   continue
             print(" ", qube, "(D)" if qube in dispvms else "")
 
         if (tags := dict(wsessiontags.get(session).items() - {("qubes","")})):
             print("\nTags in session:")
             for tk, tv in tags.items():
                 print(f'  {tk.ljust(12)} - {tv}')
+
+        if options.verbose:
+            print("\nVMs referenced in this qubes.xml:")
+            for vm in backups.values():   print(f"  {vm.name} ({vm.klass})")
 
     elif selected:
         for qube, seslist in qube_wvolmap.items():
@@ -693,8 +696,8 @@ class WyngQubesContext:
         if self.action == "create":
             _do_create(self, passphrase)    ; self.close()    ; return
 
-        self.qubes      = qubes = qubesadmin.Qubes().app
-        self.qpools_d   = get_pools(qubes)
+        self.qadmin     = qadmin = qubesadmin.Qubes().app
+        self.qpools_d   = get_pools(qadmin)
 
         self.mappings   = get_wyng_directory(self, stdin=stdin, passphrase=passphrase)
         for x,y in zip(("arch_mdata","wvolsessionmap","wvolumemap","wvolqubemap","wsessionqubes",
