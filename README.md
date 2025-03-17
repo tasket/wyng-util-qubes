@@ -7,7 +7,7 @@ restores both data and settings for Qubes VMs.
 ### Requirements
 
 * Qubes OS 4.2 in a thin-LVM, Btrfs or XFS configuration
-* [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta4 or later
+* [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta 20250215 or later
 
 
 ### Installation quick start
@@ -211,6 +211,8 @@ templates as the user originally intended.  Since users' security expectations, 
 configuration are likely to hinge on VM names, `wyng-util-qubes` addresses a security risk posed by
 Qubes' built-in tools.
 
+Disposable VMs: Since dispVMs do not have their own physical storage, they exist only in the Qubes XML metata which is always backed up in its entirety.  This means all dispVMs are included in each backup session.  However, `wyng-util-qubes` cannot see all versions of this XML data at any given time, so it cannot list dispVMs without giving a specific `--session` ID, and it cannot delete dispVMs.
+
 For each qube/VM, the private and/or root volumes are automatically backed up and restored depending on the type of VM,
 and a 'wyng-qubes-metadata' volume will always be added to the backup session as well.
 By default, only backup sessions which include this metadata volume will be accessible for
@@ -220,7 +222,7 @@ still be accessed with `wyng`).
 
 When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata space exhaustion, a condition that can cause your system storage to go offline or become corrupted. Since Wyng adds its own snapshots on top of Qubes snapshots, using Wyng adds a bit more demand for Thin LVM metadata. The answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
 
-Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here the metadata stress manifests as a slowdown of system operations.  This can be avoided by periodically defragmenting your Btrfs Qubes storage pools like so: `sudo btrfs filesystem defrag -fr -t256K /var/lib/qubes` approximately once per week or month, depending on how active your system is.
+Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here the metadata stress manifests as a slowdown of system operations.  This can be avoided by periodically defragmenting your Btrfs Qubes storage pools like so: `sudo btrfs filesystem defrag -fr -t256K /var/lib/qubes` approximately once per week or month, depending on how active your system is.  This is good to do any time you are intensively using large disk image files on Btrfs where the default _datacow_ capability remains enabled.
 
 
 ### Limitations
@@ -231,10 +233,9 @@ VMs with matching names _will be overwritten._
 
 ### Python API
 
-`wyng-util-qubes` may also be imported as a module in Python.  Its recommended to copy or link it to a Python library path with the util using module naming conventions, like so:
+`wyng-util-qubes` may also be imported as a module in Python.  Its recommended to copy or link it to a Python library path with the util using module naming conventions.  If `wyng-util-qubes` is already installed as recommended then it can be added as a CPython module like so:
 ```
-sudo cp -a src/wyng /usr/lib64/python3.11/site-packages
-sudo cp -a src/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
+sudo ln -s /usr/local/bin/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
 ```
 
 See [issue #37](https://github.com/tasket/wyng-util-qubes/issues/37) for details on module usage.
