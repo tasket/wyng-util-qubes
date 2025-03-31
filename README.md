@@ -6,7 +6,7 @@ restores both data and settings for Qubes VMs.
 
 ### Requirements
 
-* Qubes OS 4.2 in a thin-LVM, Btrfs or XFS configuration
+* Qubes OS 4.2 using thin-LVM, Btrfs or XFS local storage
 * [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta 20250215 or later
 
 
@@ -18,8 +18,11 @@ example below _/usr/local/bin_ is used, but you can choose a different location.
 
 ```
 [user@dom0 ~]$ sudo qubes-dom0-update python3-pycryptodomex python3-zstd
-
 [user@dom0 ~]$ sudo cp -a wyng-backup/src/wyng wyng-util-qubes/src/wyng-util-qubes /usr/local/bin
+```
+If using `wyng-util-qubes` Python API, it can also be installed to a Python module path like so:
+```
+[user@dom0 ~]$ sudo ln -s /usr/local/bin/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
 ```
 
 ### Command usage
@@ -155,14 +158,14 @@ a _session_, see the `prune` command.
 
 #### --dest=_URL_
 
-This (non-optional) option specifies where to access the archive.
+This (non-optional) option specifies the location of the archive.
 It accepts one of the following forms:
 
 | _URL Form_ | _Destination Type_
 |----------|-----------------
 |__file:__/path                           | Local filesystem
-|__ssh:__//user@example.com[:port][/path]      | SSH server
-|__qubes:__//vm-name[/path]                     | Qubes virtual machine
+|__ssh:__//user@example.com[:port][/path] | SSH server
+|__qubes:__//vm-name[/path]               | Qubes virtual machine
 |__qubes-ssh:__//vm-name:me@example.com[:port][/path]  | SSH server via a Qubes VM
 
 Note that paths are optional for all except ___file:___ and they are always absolute.
@@ -233,12 +236,7 @@ VMs with matching names _will be overwritten._
 
 ### Python API
 
-`wyng-util-qubes` may also be imported as a module in Python.  Its recommended to copy or link it to a Python library path with the util using module naming conventions.  If `wyng-util-qubes` is already installed as recommended then it can be added as a CPython module like so:
-```
-sudo ln -s /usr/local/bin/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
-```
-
-See [issue #37](https://github.com/tasket/wyng-util-qubes/issues/37) for details on module usage.
+`wyng-util-qubes` may also be imported and used as a module in Python. See [issue #37](https://github.com/tasket/wyng-util-qubes/issues/37) for details on module usage.
 
 ### License and Warranty
 GPLv3 License.
