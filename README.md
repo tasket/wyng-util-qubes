@@ -68,6 +68,7 @@ list               | Show contents of archive
 --pref=_pspec_         | Skip or override VM prefs (restore)
 --include-disposable=_<off\|on\>_ | Include disposable VMs (restore, list)
 --authmin=_N_          | Retain authentication for _N_ minutes
+--no-snapshot-restore  | Don't restore from local snapshots (restore)
 --no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
