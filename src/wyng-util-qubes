@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250329"
+_program = "wyng-util-qubes v0.9 beta rel 20250403"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -77,7 +77,7 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
 
     j = res.stdout
     if debug:   print(j)
-    jdata = json.loads(j[j.find('{"wversion'):])
+    jdata = json.loads(j[j.find('\n{'):])
 
     if jdata["wversion"][:3] != "0.8" \
     or "wdate" not in jdata or jdata["wdate"] < "20250215":
@@ -787,10 +787,10 @@ parser_defs = [
 ##  CONSTANTS / GLOBALS  ##
 
 columns    = max(4, min(10, shutil.get_terminal_size().columns // 17))
-thispath   = os.path.dirname(os.path.realpath(__file__)) ; mvolname   = "wyng-qubes-metadata"
+thispath   = os.path.dirname(os.path.realpath(__file__))
 wyngcmd    = thispath+"/wyng" if exists(thispath+"/wyng") else "wyng"
 qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"    ; fwfile = "firewall.xml"
-pooltypes  = ("file-reflink","lvm_thin")
+mvolname   = "wyng-qubes-metadata"     ; pooltypes  = ("file-reflink","lvm_thin")
 
 
 ##  RUN MAIN  ##
@@ -800,9 +800,9 @@ if __name__ == "__main__":
     print(_program, flush=True)     ; debug = "--debug" in sys.argv
 
     parser_defs.extend([
-    [["action"],  {"choices": ["create","backup","restore","verify","prune","delete","list"],
-                   "help": "Action to take"}],
-    [["qubenames"],      {"nargs": "*"}]])
+     [["action"],    {"choices": ["create","backup","restore","verify","prune","delete","list"],
+                      "help": "Action to take"}],
+     [["qubenames"], {"nargs": "*"}]])
 
     with WyngQubesContext(sys.argv[1:], stdin=sys.stdin) as wq_context:
         action = wq_context.action    ; options = wq_context.options
@@ -811,18 +811,12 @@ if __name__ == "__main__":
         if not wq_context.wvolumemap.get(mvolname) and action not in ("create","backup"):
             x_it(1, "No Qubes backup sessions.")
 
-        if action == "backup":
-            wq_context.backup()
-        elif action == "restore":
-            wq_context.restore()
-        elif action == "verify":
-            wq_context.verify()
-        elif action == "prune":
-            wq_context.prune()
-        elif action == "delete":
-            wq_context.delete()
-        elif action == "list":
-            show_list(wq_context)
+        if action == "backup":       wq_context.backup()
+        elif action == "restore":    wq_context.restore()
+        elif action == "verify":     wq_context.verify()
+        elif action == "prune":      wq_context.prune()
+        elif action == "delete":     wq_context.delete()
+        elif action == "list":       show_list(wq_context)
 
 
     ##  CLEAN UP  ##
