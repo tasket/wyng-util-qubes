@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250403"
+_program = "wyng-util-qubes v0.9 beta rel 20250404"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -153,7 +153,7 @@ def list_sessions(slist):
     rows, extra = divmod(size := len(slist), c := columns)   ; rows += bool(extra)
     if extra and rows < 3 and (columns - extra) > 1:   c -= (columns - extra) // 2
     for r in range(rows):
-        print("  ".join(sorted(slist[x*rows+r] for x in range(c) if x*rows+r < size)))
+        print("", "  ".join(slist[x*rows+r] for x in range(c) if x*rows+r < size))
 
 
 def ts_to_datetime(ts):
@@ -646,7 +646,7 @@ def show_list(ctx, selected=None, session=None):
             if options.unattended:
                 for ses in sorted(xml_seslist):   print(ses)
             else:
-                list_sessions(xml_seslist)
+                list_sessions(sorted(xml_seslist))
 
     else:
         print("\n* Archived Qubes VMs *")
