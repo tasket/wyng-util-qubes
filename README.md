@@ -25,6 +25,13 @@ If using `wyng-util-qubes` Python API, it can also be installed to a Python modu
 [user@dom0 ~]$ sudo ln -s /usr/local/bin/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
 ```
 
+#### Btrfs Storage
+If your Qubes storage pools are on Btrfs then you will need to convert any pool directories to Btrfs subvolumes before doing backups.  For the default Qubes Btrfs install, there is one pool dir to convert:
+```
+qvm-shutdown --all --force
+sudo bash wyng-backup/misc/convert-dir-to-subvolume.sh /var/lib/qubes
+```
+
 ### Command usage
 
 __wyng-util-qubes__ is run in the Admin VM (dom0):
