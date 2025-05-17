@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250404"
+_program = "wyng-util-qubes v0.9 beta rel 20250510"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -197,7 +197,7 @@ def parse_options(args, pdefs):
 
     debug = options.debug
 
-    w_options = [wyngcmd]
+    w_options = [options.wyng or (thispath+"/wyng" if exists(thispath+"/wyng") else "wyng")]
     if options.dest:
         w_options.append("--dest="+options.dest)
     if options.meta_dir:   w_options.append("--meta-dir="+options.meta_dir)
@@ -268,6 +268,7 @@ def _do_backup(ctx, selected=None):
 
     w_options.extend(["--local-from=" + jsontmp, "--tag=qubes", "--send-unchanged"])
     if options.autoprune:  w_options.append("--autoprune="+options.autoprune)
+    if options.remap:      w_options.append("--remap")
     if options.dedup:      w_options.append("-d")
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{ctx.tarpath}", "send"]
 
@@ -395,6 +396,7 @@ def _do_restore(ctx, selected=None, session=None):
     # Remove or reset properties that are not in the backup metadata
     print("\nRestoring VM settings:")
     for target in selected:
+        if target in err_domains:   continue
         print(" "+target, flush=True)
         qube = backups[target]    ; vm = live_qubes[target]
         vm.tags.add("backup-restore-in-progress")
@@ -487,6 +489,9 @@ def _do_restore(ctx, selected=None, session=None):
                 print("Error removing tag %s.%s: %s" % (qube.name, tag, err))
                 err_domains.append(qube.name)
 
+        if "backup-restore-in-progress" in vm.tags and target not in err_domains:
+            vm.tags.remove("backup-restore-in-progress")
+
         if vm.klass in ("TemplateVM","StandaloneVM"):
             print(" Running qvm-sync-appmenus for", vm.name)
             try:
@@ -495,9 +500,6 @@ def _do_restore(ctx, selected=None, session=None):
             except:
                 pass
         run(["sudo", "-u", "#1000", "qvm-appmenus", "--update", vm.name], check=False)
-
-        if "backup-restore-in-progress" in vm.tags and target not in err_domains:
-            vm.tags.remove("backup-restore-in-progress")
 
 
 def _do_verify(ctx, selected=None, session=None):
@@ -769,6 +771,7 @@ parser_defs = [
  [["--pool-info"],    {"action": "store_true", "default": False,
                        "help": "Show local disk storage (list)"}],
  [["--pool", "-p"],   {"help": "Specify Qubes storage pool for creating VMs (restore)."}],
+ [["--wyng"],         {"help": "Alternate path to Wyng executable."}],
  [["--wyngopt","-w"], {"action": "append", "default": [],
                        "help": "Pass an option to Wyng directly."}],
  [["--no-snapshot-restore"], {"action": "store_true", "default": False,
@@ -777,6 +780,8 @@ parser_defs = [
                        "help": "Don't rename archived volumes for LVM or Reflink (backup)"}],
  [["--include-disposable"], {"choices": ("off","on"), "default": "off",
                        "help": "Include disposable VMs (restore, list)"}],
+ [["--remap"],        {"action": "store_true", "default": False,
+                       "help": "Auto-remap LVM snapshots to current archive (backup)"}],
  [["--unattended", "-u"], {"action": "store_true", "help": "Unattended operation"}],
  [["--verbose"],      {"action": "store_true", "help": "Show more status info"}],
  [["--debug"],        {"action": "store_true", "help": "Show debug info"}],
@@ -788,7 +793,6 @@ parser_defs = [
 
 columns    = max(4, min(10, shutil.get_terminal_size().columns // 17))
 thispath   = os.path.dirname(os.path.realpath(__file__))
-wyngcmd    = thispath+"/wyng" if exists(thispath+"/wyng") else "wyng"
 qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"    ; fwfile = "firewall.xml"
 mvolname   = "wyng-qubes-metadata"     ; pooltypes  = ("file-reflink","lvm_thin")
 

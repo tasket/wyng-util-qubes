@@ -77,8 +77,10 @@ list               | Show contents of archive
 --authmin=_N_          | Retain authentication for _N_ minutes
 --no-snapshot-restore  | Don't restore from local snapshots (restore)
 --no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
+--remap                | Auto-remap LVM snapshots to current archive (backup)
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
+--wyng=_path_          | Alternate path to Wyng executable
 -w _wyng_option_spec_  | Pass an option directly to Wyng using the form `-w optname[=value]`
 
 
@@ -253,6 +255,10 @@ Warranty:  None.  Use at your own risk!
 
 
 ### History
+
+2025-05-10: v0.9beta Minor fixes & options (Wyng path, remap)
+
+2025-03-31: v0.9beta Python API & restore from snapshot
 
 2024-04-24: v0.9beta Support reflink (i.e. Btrfs, XFS) in addition to lvmthin.
 
