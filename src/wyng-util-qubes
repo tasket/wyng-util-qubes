@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250510"
+_program = "wyng-util-qubes v0.9 wip rel 20250515"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -25,6 +25,15 @@ def x_it(code, text=""):
         sys.exit(code)
     elif code > 0:
         raise RuntimeError(f"Exit code {code}: {text}")
+
+
+class InputError(ValueError):   pass
+
+class OptionError(ValueError):   pass
+
+class SelectionError(ValueError):   pass
+
+class AuthenticationError(ValueError):   pass
 
 
 class QubesPool:
@@ -81,7 +90,7 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
 
     if jdata["wversion"][:3] != "0.8" \
     or "wdate" not in jdata or jdata["wdate"] < "20250215":
-        x_it(1, "Wyng v0.8 release 20250215 or later is required.")
+        raise ValueError("Wyng v0.8 release 20250215 or later is required.")
 
     for volname, sname, ses in ((vk, sk[2:], sv) for vk, vv in jdata["volumes"].items()
                                 for sk, sv in vv["sessions"].items()):
@@ -161,16 +170,14 @@ def ts_to_datetime(ts):
     return raw.astimezone().isoformat(sep=u" ")
 
 
-def handle_wyng_error(ctx, p):
-    etext  = (p.stdout or "") + "\n" + (p.stderr or "")
-    if (rc := p.returncode) == 2:
-        errln = [x for x in etext.splitlines() if x.startswith("Error on volumes:")]
-        vols  = list(map(str.strip, (errln[0].split(":", maxsplit=1)[-1].split(",")))) if errln else []
-        vms   = [y for x,y in wvolqubemap.items() if x in vols]
+def handle_wyng_error(ctx, p, errfile=None):
+    #etext  = (p.stdout or "") + "\n" + (p.stderr or "")
+    if (rc := p.returncode) == 2 and errfile and exists(errfile):
+        with open(errfile) as f:   vols = list(json.load(f)["volumes"])
+        vms   = [y for x,y in ctx.wvolqubemap.items() if x in vols]
         ctx.err_domains.extend(vms)
-        err_out(etext if debug else "\n".join(errln))
     elif rc:
-        x_it(rc, etext.strip())
+        p.check_returncode()
 
 
 def run(cmd, check=True, capt=True, **kwargs):
@@ -204,7 +211,7 @@ def parse_options(args, pdefs):
     if options.unattended: w_options.append("-u")
     if options.authmin:    w_options.append("--authmin="+options.authmin)
     if options.all and options.action not in ("list","prune"):
-        x_it(1, "--all may only be used with list or prune.")
+        raise SelectionError("--all may only be used with list or prune.")
     w_options.extend(["--"+x for x in options.wyngopt])
 
     return options, w_options
@@ -214,7 +221,7 @@ def parse_options(args, pdefs):
 
 def _do_create(ctx, passphrase=None):
     if not ctx.options.dest:
-        x_it(1, "Dest URL is required to create an archive.")
+        raise OptionError("Dest URL is required to create an archive.")
 
     wyng_cmd = ctx.w_options[:]    ; run_opts = {"env": os.environ.copy()}
     if passphrase:
@@ -257,7 +264,7 @@ def _do_backup(ctx, selected=None):
             pool_vols.setdefault("/".join(ctx.qpools_d[vm.volumes[ii].pool].path),
                                  []).append((vn3, vn))
 
-    if not pool_vols:   x_it(1, "Please supply a list of Qubes VMs to backup.")
+    if not pool_vols:   raise SelectionError("Please supply a list of Qubes VMs to backup.")
 
     # Copy the Qubes metadata to a .tar
     os.chdir(qubesvar)
@@ -272,10 +279,10 @@ def _do_backup(ctx, selected=None):
     if options.dedup:      w_options.append("-d")
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{ctx.tarpath}", "send"]
 
-    p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
+    p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr, check=False)
 
     if p.returncode:
-        handle_wyng_error(ctx, p)
+        handle_wyng_error(ctx, p, errfile=jsontmp+".error")
 
     # Set each VM's backup_timestamp
     ts = int(time.time())
@@ -296,16 +303,17 @@ def _do_restore(ctx, selected=None, session=None):
 
     if not (session := session or options.session):
         if not selected:
-            x_it(1, "Please specify either a --session or qube names to restore.")
+            raise SelectionError("Please specify either a --session or qube names to restore.")
 
         # Check that there aren't multiple most-recent sessions for selected VMs:
         if len(s:= set((sorted(y)[-1] for x,y in ctx.qube_wvolmap.items() if x in selected))) != 1:
-            x_it(1, "Ambiguous VM session selection. Please use --session to choose a date-time.")
+            raise SelectionError("Ambiguous VM session selection. "
+                                 "Please use --session to choose a date-time.")
 
         session = list(s)[0]
 
     elif not ctx.wsessionqubes or session not in ctx.wvolumemap[mvolname]:
-        x_it(1, "No sessions match.")
+        raise SelectionError("No sessions match.")
 
     # Match VM selections to backed-up volumes
     backups   = ctx.get_qubes_metadata(session)   ; opref = options.pref
@@ -388,9 +396,7 @@ def _do_restore(ctx, selected=None, session=None):
                             "--session="+session]
     if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
     p = run(wyng_cmd + ["receive"], check=False, stdout=sys.stdout, stderr=sys.stderr)
-    if p.returncode:   handle_wyng_error(ctx, p)
-    # elif p.returncode > 0:
-    #     raise subprocess.CalledProcessError(p.returncode, p.stderr)
+    if p.returncode:   handle_wyng_error(ctx, p, errfile=jsontmp+".error")
 
     # Selectively restore qube properties
     # Remove or reset properties that are not in the backup metadata
@@ -509,16 +515,17 @@ def _do_verify(ctx, selected=None, session=None):
 
     if not (session := session or options.session):
         if not selected:
-            x_it(1, "Please specify either a --session or qube names to restore.")
+            raise SelectionError("Please specify either a --session or qube names to restore.")
 
         # Check that there aren't multiple most-recent sessions for selected VMs:
         if len(s:= set((sorted(y)[-1] for x,y in ctx.qube_wvolmap.items() if x in selected))) != 1:
-            x_it(1, "Ambiguous VM session selection. Please use --session to choose a date-time.")
+            raise SelectionError("Ambiguous VM session selection. "
+                                 "Please use --session to choose a date-time.")
 
         session = list(s)[0]
 
     elif not ctx.wsessionqubes or session not in ctx.wvolumemap[mvolname]:
-        x_it(1, "No sessions match.")
+        raise SelectionError("No sessions match.")
 
     # Match VM selections to backed-up volumes
     backups   = ctx.get_qubes_metadata(session)
@@ -537,7 +544,7 @@ def _do_verify(ctx, selected=None, session=None):
           ", ".join(sorted(selected)) or "(none)", "\n", flush=True)
     if notmatched:
         print(f"\nNot matched:\n", ", ".join(sorted(notmatched)))
-    if not selected:   x_it(1, "")
+    if not selected:   raise SelectionError("No match.")
 
     lvolumes = [vol for vm,ses_d in ctx.qube_wvolmap.items()
                         for ses,vlst in ses_d.items() for vol in vlst
@@ -559,7 +566,7 @@ def _do_prune(ctx, selected=None, session=None):
     selected  = selected or ctx.selected
 
     if not (session := session or options.session) and not options.autoprune:
-        x_it(1, "Please specify a session, an autoprune mode or both.")
+        raise SelectionError("Please specify a session, an autoprune mode or both.")
 
     lvolumes = { vol for vm, ses_d in ctx.qube_wvolmap.items()
                         for ses, vlst in ses_d.items()
@@ -580,7 +587,7 @@ def _do_delete(ctx, selected=None):
     selected  = selected or ctx.selected
 
     if not len(selected) == 1:
-        x_it(1, "Please specify a single qube name to delete.")
+        raise SelectionError("Please specify a single qube name to delete.")
 
     lvolumes = { vol for vm, ses_d in ctx.qube_wvolmap.items()
                         for ses, vlst in ses_d.items()
@@ -622,7 +629,7 @@ def show_list(ctx, selected=None, session=None):
 
     elif session:
         if session not in wsessionqubes:
-            x_it(1, f"No match for session {session}.")
+            raise SelectionError(f"No match for session {session}.")
 
         backups  = ctx.get_qubes_metadata(session)    ; tags = {}
         dispvms  = {x.name for x in backups.values() if x.klass=="DispVM"}
@@ -808,7 +815,9 @@ if __name__ == "__main__":
                       "help": "Action to take"}],
      [["qubenames"], {"nargs": "*"}]])
 
-    with WyngQubesContext(sys.argv[1:], stdin=sys.stdin) as wq_context:
+    try:
+        wq_context = WyngQubesContext(sys.argv[1:], stdin=sys.stdin)
+
         action = wq_context.action    ; options = wq_context.options
         if action == "create":   x_it(0)
 
@@ -822,10 +831,14 @@ if __name__ == "__main__":
         elif action == "delete":     wq_context.delete()
         elif action == "list":       show_list(wq_context)
 
+    except (SelectionError, OptionError, InputError) as e:
+        if debug:   raise e
+        x_it(9, f"\n{e.__class__.__name__}: {e}\n")
+
 
     ##  CLEAN UP  ##
     if (errs := wq_context.err_domains):
-        x_it(2, "\nErrors for VMs: "+", ".join(sorted(set(errs))))
+        x_it(2, "\nError for VMs: "+", ".join(sorted(set(errs))))
 
     if action != "list":   print("\nDone.")
 
