@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 wip rel 20250527"
+_program = "wyng-util-qubes v0.9 beta rel 20250528"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -19,8 +19,10 @@ def b2i(b):   return int.from_bytes(b, byteorder="big")
 def err_out(text):   sys.stderr.write(text+"\n")
 
 # Exit with simple message
-def x_it(code, text=""):
+def x_it(code, text="", err=None):
     if text:        err_out(text)
+    if debug and e:   raise err
+
     if __name__ == "__main__":
         sys.exit(code)
     elif code > 0:
@@ -176,6 +178,9 @@ def handle_wyng_error(ctx, p, errfile=None):
         with open(errfile) as f:   vols = list(json.load(f)["volumes"])
         vms   = [y for x,y in ctx.wvolqubemap.items() if x in vols] or ["(unknown)"]
         ctx.err_domains.extend(vms)
+    elif rc == 3:
+        if debug:   err_out(repr(p))
+        raise AuthenticationError(((p.stdout or "") + "\n" + (p.stderr or "")).strip())
     elif rc:
         p.check_returncode()
 
@@ -836,8 +841,10 @@ if __name__ == "__main__":
         elif action == "list":       show_list(wq_context)
 
     except (SelectionError, OptionError, InputError) as e:
-        if debug:   raise e
-        x_it(9, f"\n{e.__class__.__name__}: {e}\n")
+        x_it(9, "", err=e)
+
+    except AuthenticationError as e:
+        x_it(3, "", err=e)
 
 
     ##  CLEAN UP  ##
