@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 wip rel 20250515"
+_program = "wyng-util-qubes v0.9 wip rel 20250527"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -174,7 +174,7 @@ def handle_wyng_error(ctx, p, errfile=None):
     #etext  = (p.stdout or "") + "\n" + (p.stderr or "")
     if (rc := p.returncode) == 2 and errfile and exists(errfile):
         with open(errfile) as f:   vols = list(json.load(f)["volumes"])
-        vms   = [y for x,y in ctx.wvolqubemap.items() if x in vols]
+        vms   = [y for x,y in ctx.wvolqubemap.items() if x in vols] or ["(unknown)"]
         ctx.err_domains.extend(vms)
     elif rc:
         p.check_returncode()
@@ -293,6 +293,7 @@ def _do_backup(ctx, selected=None):
         except:
             if debug:   print("Skip timestamp:", vmname)
             continue
+        if "disp-created-by-dom0" in vm.tags:   continue
         vm.backup_timestamp = ts
 
 
@@ -389,7 +390,7 @@ def _do_restore(ctx, selected=None, session=None):
 
     # Restore data volumes
     print("\nRestoring VM data volumes:", flush=True)
-    json.dump(pool_vols, open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w"))
+    with open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w") as f:   json.dump(pool_vols, f)
     if debug:   print("JSON:\n", json.dumps(pool_vols))
     if options.verbose or not options.unattended:   w_options.append("--verbose")
     wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
@@ -546,14 +547,17 @@ def _do_verify(ctx, selected=None, session=None):
         print(f"\nNot matched:\n", ", ".join(sorted(notmatched)))
     if not selected:   raise SelectionError("No match.")
 
-    lvolumes = [vol for vm,ses_d in ctx.qube_wvolmap.items()
-                        for ses,vlst in ses_d.items() for vol in vlst
-                        if vm in selected and ses==session]
+    lvolumes = [[vol,""] for vm,ses_d in ctx.qube_wvolmap.items()
+                          for ses,vlst in ses_d.items()
+                           for vol in vlst if vm in selected and ses==session]
+    with open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w") as f:   json.dump({None: lvolumes}, f)
 
     if options.verbose or not options.unattended:   w_options.append("--verbose")
-    wyng_cmd = w_options + ["--session="+session, "verify"] + lvolumes
+    if ctx.arch_mdata["wversion"][:3] == "0.8" and ctx.arch_mdata["wdate"] > "20250526":
+        w_options.append("--vols-from="+jsontmp)
+    wyng_cmd = w_options + ["--session="+session, "verify"] + [x[0] for x in lvolumes]
     p = run(wyng_cmd, check=False, stdout=sys.stdout, stderr=sys.stderr)
-    if p.returncode:   handle_wyng_error(ctx, p)
+    if p.returncode:   handle_wyng_error(ctx, p, errfile=jsontmp+".error")
 
     for vm in selected:
         if vm not in backups.keys():
