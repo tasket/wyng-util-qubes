@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "wyng-util-qubes v0.9 beta rel 20250528"
+_program = "Wyng-util-qubes v0.9 beta rel 20250529"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -20,14 +20,17 @@ def err_out(text):   sys.stderr.write(text+"\n")
 
 # Exit with simple message
 def x_it(code, text="", err=None):
-    if text:        err_out(text)
-    if debug and e:   raise err
+    if text:         err_out(f"\n{text}")
+    if debug and e:  err_out(repr(err))
 
     if __name__ == "__main__":
+        if code and text:  print()
         sys.exit(code)
     elif code > 0:
         raise RuntimeError(f"Exit code {code}: {text}")
 
+
+class WyngError(ValueError):   pass
 
 class InputError(ValueError):   pass
 
@@ -36,6 +39,8 @@ class OptionError(ValueError):   pass
 class SelectionError(ValueError):   pass
 
 class AuthenticationError(ValueError):   pass
+
+class StorageError(ValueError):   pass
 
 
 class QubesPool:
@@ -174,13 +179,17 @@ def ts_to_datetime(ts):
 
 def handle_wyng_error(ctx, p, errfile=None):
     #etext  = (p.stdout or "") + "\n" + (p.stderr or "")
-    if (rc := p.returncode) == 2 and errfile and exists(errfile):
+    if (rc := p.returncode) and debug:   err_out(repr(p))
+    if rc == 2 and errfile and exists(errfile):
         with open(errfile) as f:   vols = list(json.load(f)["volumes"])
         vms   = [y for x,y in ctx.wvolqubemap.items() if x in vols] or ["(unknown)"]
         ctx.err_domains.extend(vms)
     elif rc == 3:
-        if debug:   err_out(repr(p))
-        raise AuthenticationError(((p.stdout or "") + "\n" + (p.stderr or "")).strip())
+        raise AuthenticationError(rc, ((p.stdout or "") + "\n" + (p.stderr or "")).strip())
+    elif rc in (5,6,7):
+        raise StorageError(rc, ((p.stdout or "") + "\n" + (p.stderr or "")).strip())
+    elif rc == 9:
+        raise WyngError(((p.stdout or "") + "\n" + (p.stderr or "")).strip(), p)
     elif rc:
         p.check_returncode()
 
@@ -216,7 +225,7 @@ def parse_options(args, pdefs):
     if options.unattended: w_options.append("-u")
     if options.authmin:    w_options.append("--authmin="+options.authmin)
     if options.all and options.action not in ("list","prune"):
-        raise SelectionError("--all may only be used with list or prune.")
+        raise OptionError("--all may only be used with list or prune.")
     w_options.extend(["--"+x for x in options.wyngopt])
 
     return options, w_options
@@ -840,11 +849,14 @@ if __name__ == "__main__":
         elif action == "delete":     wq_context.delete()
         elif action == "list":       show_list(wq_context)
 
-    except (SelectionError, OptionError, InputError) as e:
-        x_it(9, "", err=e)
+    except WyngError as e:
+        x_it(10, "Wyng::"+e.args[0], err=e.args[1])
 
-    except AuthenticationError as e:
-        x_it(3, "", err=e)
+    except (SelectionError, OptionError, InputError) as e:
+        x_it(9, f"\n{e.__class__.__name__}: {e.args[0]}\n", err=e)
+
+    except (AuthenticationError, StorageError) as e:
+        x_it(e.args[0], e.args[1], err=e)
 
 
     ##  CLEAN UP  ##
