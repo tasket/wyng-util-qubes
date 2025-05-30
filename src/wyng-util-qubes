@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250529"
+_program = "Wyng-util-qubes v0.9 beta rel 20250530"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -72,13 +72,12 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
     # wvolsessionmap:  (dict)session -> (set)arch_vol_names
     # wsessionqubes :  (dict)session -> (set)qube_names
     # wsessiontags  :  (dict)session -> (dict)tags
-    # wtagsession   :  (dict)(tagid,text) -> (set)sessions
     # wvolumemap    :  (dict)arch_vol_name -> (list)sessions
     # qube_wvolmap  :  (dict)qube_name -> (dict)session -> (set)arch_vol_name
     # q_wpriv_wrootmap: (dict)qube_name -> (dict)session -> (dict)voltype -> arch_vol_name
 
     wvolsessionmap, wvolumemap, qube_wvolmap, q_wpriv_wrootmap = {}, {}, {}, {}
-    wvolqubemap, wsessionqubes, wsessiontags, wtagsession = {}, {}, {}, {}
+    wvolqubemap, wsessionqubes, wsessiontags = {}, {}, {}
     volname  = qubename = None
 
     wyng_cmd = ctx.w_options[:]    ; run_opts = {"env": os.environ.copy()}
@@ -97,15 +96,14 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
 
     if jdata["wversion"][:3] != "0.8" \
     or "wdate" not in jdata or jdata["wdate"] < "20250215":
-        raise ValueError("Wyng v0.8 release 20250215 or later is required.")
+        raise RuntimeError("Wyng v0.8 release 20250215 or later is required.")
+
 
     for volname, sname, ses in ((vk, sk[2:], sv) for vk, vv in jdata["volumes"].items()
                                 for sk, sv in vv["sessions"].items()):
         wvolumemap.setdefault(volname, list()).append(sname)
         wvolsessionmap.setdefault(sname, set()).add(volname)
         wsessiontags.setdefault(sname, {}).update(ses["tags"])
-        #for tag, cmnt in ses["tags"].items():
-        #    wtagsession.setdefault((tag,cmnt), set()).add(sname)
 
     for sname, vols in wvolsessionmap.items():
         if s := set(get_qubename_parts(x)[1] for x in vols
@@ -282,7 +280,8 @@ def _do_backup(ctx, selected=None):
 
     # Copy the Qubes metadata to a .tar
     os.chdir(qubesvar)
-    run("find . -name '*.xml' | tar -czf " +ctx.tarpath+ " --verbatim-files-from -T -", shell=True)
+    run("find . -name '*.xml' -o -name notes.txt"
+        " | tar -czf " +ctx.tarpath+ " --verbatim-files-from -T -", shell=True)
 
     # Start Wyng backup with selected VM volumes and import of the metadata tar
     json.dump(pool_vols, open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w"))
@@ -429,11 +428,12 @@ def _do_restore(ctx, selected=None, session=None):
                    and qube.properties.get("template_for_dispvms") and x.template == qube.name):
             dvm.shutdown(force=True)
 
-        # Restore nested xml (firewall) files
-        if exists(subdir+qube.name+"/"+fwfile):
-            shutil.copyfile(subdir+qube.name+"/"+fwfile, qubesvar+subdir+target+"/"+fwfile)
-        elif exists(qubesvar+subdir+target+"/"+fwfile):
-            os.remove(qubesvar+subdir+target+"/"+fwfile)
+        # Restore nested xml and notes files
+        for varfile in ("firewall.xml", "notes.txt"):
+            if exists(qubesvar+subdir+target+"/"+varfile):
+                os.remove(qubesvar+subdir+target+"/"+varfile)
+            if exists("qmd/"+subdir+target+"/"+varfile):
+                shutil.copy2("qmd/"+subdir+target+"/"+varfile, qubesvar+subdir+target+"/"+varfile)
 
         for prop in set(qube.properties) | set(vm.property_list()):
             if prop in pref_excludes:
@@ -728,14 +728,17 @@ class WyngQubesContext:
 
     def get_qubes_metadata(self, session):
         # Receive metadata
+        shutil.rmtree(self.tmpdir+"/qmd", ignore_errors=True)
+        os.makedirs(self.tmpdir+"/qmd", exist_ok=True)
+
         wyng_cmd = self.w_options + ["-u", "--quiet", "--save-to="+self.tarpath,
                                     "--session="+session, "receive", mvolname]
-        result = run(wyng_cmd, check=True)
+        result   = run(wyng_cmd, check=True)
 
-        tar_cmd = ["tar", "-xzf", self.tarpath]
-        result = run(tar_cmd, cwd=self.tmpdir, check=True)
+        tar_cmd  = ["tar", "-xzf", self.tarpath]
+        result   = run(tar_cmd, cwd=self.tmpdir+"/qmd", check=True)
 
-        return Core3Qubes(self.tmpdir+"/"+qubesxml).domains
+        return Core3Qubes(self.tmpdir+"/qmd/"+qubesxml).domains
 
     def backup(self, vms=[]):
         res = _do_backup(self, vms or self.selected)   ; self.close()
@@ -818,7 +821,7 @@ parser_defs = [
 
 columns    = max(4, min(10, shutil.get_terminal_size().columns // 17))
 thispath   = os.path.dirname(os.path.realpath(__file__))
-qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"    ; fwfile = "firewall.xml"
+qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"
 mvolname   = "wyng-qubes-metadata"     ; pooltypes  = ("file-reflink","lvm_thin")
 
 
