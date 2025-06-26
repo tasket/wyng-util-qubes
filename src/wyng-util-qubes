@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250530"
+_program = "Wyng-util-qubes v0.9 beta rel 20250621"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -255,10 +255,10 @@ def _do_backup(ctx, selected=None):
     to_backup = sorted(set(selected+includes))
     pool_vols = {}
 
-    print("\nSelected for backup:\n", ", ".join(to_backup), "\n", flush=True)
+    print("\nSelected for backup:\n", ", ".join(to_backup), flush=True)
     for vmname in to_backup:
         if vmname == "dom0" or vmname not in live_qubes:
-            print(" Skipping", vmname)    ; continue
+            print("Skipping", vmname)    ; continue
 
         vm = live_qubes[vmname]
         if vm.klass == "DispVM":   continue
@@ -279,7 +279,7 @@ def _do_backup(ctx, selected=None):
     if not pool_vols:   raise SelectionError("Please supply a list of Qubes VMs to backup.")
 
     # Copy the Qubes metadata to a .tar
-    os.chdir(qubesvar)
+    os.chdir(qubesvar)    ; print()
     run("find . -name '*.xml' -o -name notes.txt"
         " | tar -czf " +ctx.tarpath+ " --verbatim-files-from -T -", shell=True)
 
