@@ -256,6 +256,8 @@ Warranty:  None.  Use at your own risk!
 
 ### History
 
+2025-06-21: v0.9beta(5) Improved error handling; support Qubes notes.txt; safer extraction
+
 2025-05-10: v0.9beta Minor fixes & options (Wyng path, remap)
 
 2025-03-31: v0.9beta Python API & restore from snapshot
