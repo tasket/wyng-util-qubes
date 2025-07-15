@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250621"
+_program = "Wyng-util-qubes v0.9 wip rel 20250710"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -20,8 +20,8 @@ def err_out(text):   sys.stderr.write(text+"\n")
 
 # Exit with simple message
 def x_it(code, text="", err=None):
-    if text:         err_out(f"\n{text}")
-    if debug and e:  err_out(repr(err))
+    if text:           err_out(f"\n{text}")
+    if debug and err:  err_out(repr(err))
 
     if __name__ == "__main__":
         if code and text:  print()
@@ -186,10 +186,8 @@ def handle_wyng_error(ctx, p, errfile=None):
         raise AuthenticationError(rc, ((p.stdout or "") + "\n" + (p.stderr or "")).strip())
     elif rc in (5,6,7):
         raise StorageError(rc, ((p.stdout or "") + "\n" + (p.stderr or "")).strip())
-    elif rc == 9:
-        raise WyngError(((p.stdout or "") + "\n" + (p.stderr or "")).strip(), p)
     elif rc:
-        p.check_returncode()
+        raise WyngError(((p.stdout or "") + "\n" + (p.stderr or "")).strip(), p)
 
 
 def run(cmd, check=True, capt=True, **kwargs):
@@ -358,7 +356,7 @@ def _do_restore(ctx, selected=None, session=None):
     # pref_subst    = {x[:-3]: None for x in opref if len(x)>4 and x.endswith("::n")} \
     # + {y[0]: y[2] for x in opref if len(y := x.split("::", maxsplit=2))==3 and y[1]=="s"}
 
-    os.chdir(ctx.tmpdir)    ; pool_vols = {}
+    os.chdir(ctx.tmpdir)   ; pool_vols = {}
 
     for target in selected:
         qube = backups[target]
@@ -384,37 +382,41 @@ def _do_restore(ctx, selected=None, session=None):
 
         if vm.klass == "DispVM":   continue
 
-        for ii in ("private","root"):
-            if ii == "root" and vm.klass not in ("TemplateVM","StandaloneVM"):   continue
-            if not ctx.q_wpriv_wrootmap[target][session].get(ii):
-                err_out(f"Error: No {ii} volume available for {vm.klass} '{target}'.")
-                err_domains.append(target)    ; continue
-            # Create a dict of {pool.pathname: [(volname, alias), ...]}
-            pool_vols.setdefault("/".join(ctx.qpools_d[vm.volumes[ii].pool].path), []).append(
-                                 (ctx.q_wpriv_wrootmap[target][session][ii],
-                                  get_vm_volname(live_qubes[target], ii)[0])  )
+        vset = {x: ctx.q_wpriv_wrootmap[target][session].get(x)  for x in ("private","root")}
+        hasroot = vm.klass in ("TemplateVM","StandaloneVM")
+        if not vset["private"] or (hasroot and not vset["root"]):
+            err_out(f"Incomplete volume list for {vm.klass} '{target}' in session {session}.")
+            if not options.force_incomplete or not hasroot:
+                print("Skipping", target)   ; err_domains.append(target)   ; continue
 
+        for ix,iy in ((x,y) for x, y in vset.items() if y):
+            pool_vols.setdefault("/".join(ctx.qpools_d[vm.volumes[ix].pool].path), []).append(
+                                 (iy, get_vm_volname(live_qubes[target], ix)[0]) )
+
+    selected = [x for x in selected if x not in err_domains]
     if any((x.properties.get("template_for_dispvms") in {"True"} for x in backups.values()
             if x.name in selected)):
         print("Warning:  DispVMs based on restored disp. templates will be shut down.")
-    if not options.unattended:
+
+    if not options.unattended and (set(selected) & set(live_qubes)):
         print("Warning:  Restoring to existing VMs will overwrite them.")
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     # Restore data volumes
-    print("\nRestoring VM data volumes:", flush=True)
-    with open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w") as f:   json.dump(pool_vols, f)
-    if debug:   print("JSON:\n", json.dumps(pool_vols))
-    if options.verbose or not options.unattended:   w_options.append("--verbose")
-    wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
-                            "--session="+session]
-    if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
-    p = run(wyng_cmd + ["receive"], check=False, stdout=sys.stdout, stderr=sys.stderr)
-    if p.returncode:   handle_wyng_error(ctx, p, errfile=jsontmp+".error")
+    if pool_vols:
+        print("\nRestoring VM data volumes:", flush=True)
+        with open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w") as f:   json.dump(pool_vols, f)
+        if debug:   print("JSON:\n", json.dumps(pool_vols))
+        if options.verbose or not options.unattended:   w_options.append("--verbose")
+        wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
+                                "--session="+session]
+        if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
+        p = run(wyng_cmd + ["receive"], check=False, stdout=sys.stdout, stderr=sys.stderr)
+        if p.returncode:   handle_wyng_error(ctx, p, errfile=jsontmp+".error")
 
     # Selectively restore qube properties
     # Remove or reset properties that are not in the backup metadata
-    print("\nRestoring VM settings:")
+    if selected:   print("\nRestoring VM settings:")
     for target in selected:
         if target in err_domains:   continue
         print(" "+target, flush=True)
@@ -711,7 +713,10 @@ class WyngQubesContext:
         self.err_domains= []
 
         if create_arch or self.action == "create":
-            _do_create(self, passphrase)    ; self.close()    ; return
+            _do_create(self, passphrase)    ; self.close()
+            return
+        elif self.action == "version":
+            return
 
         self.qadmin     = qadmin = qubesadmin.Qubes().app
         self.qpools_d   = get_pools(qadmin)
@@ -766,17 +771,8 @@ class WyngQubesContext:
         #if not debug:   shutil.rmtree(self.tmpdir, ignore_errors=True)
 
 
-##  MAIN  ##
 
-if sys.hexversion < 0x3080000:
-    x_it(1, "Python ver. 3.8 or greater required.")
-
-# Root user required
-if os.getuid() > 0:
-    x_it(1, "Must be root user.")
-
-
-# Parse Arguments
+##  CONSTANTS / GLOBALS  ##
 
 parser_defs = [
  [["--dest"],         {"help": "URL location of archive."}],
@@ -810,6 +806,8 @@ parser_defs = [
                        "help": "Include disposable VMs (restore, list)"}],
  [["--remap"],        {"action": "store_true", "default": False,
                        "help": "Auto-remap LVM snapshots to current archive (backup)"}],
+ [["--force-incomplete"], {"action": "store_true", "default": False,
+                       "help": "Restore template/standalone VM if a volume is missing"}],
  [["--unattended", "-u"], {"action": "store_true", "help": "Unattended operation"}],
  [["--verbose"],      {"action": "store_true", "help": "Show more status info"}],
  [["--debug"],        {"action": "store_true", "help": "Show debug info"}],
@@ -817,30 +815,35 @@ parser_defs = [
 ]
 
 
-##  CONSTANTS / GLOBALS  ##
-
+debug      = False
 columns    = max(4, min(10, shutil.get_terminal_size().columns // 17))
 thispath   = os.path.dirname(os.path.realpath(__file__))
 qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"
 mvolname   = "wyng-qubes-metadata"     ; pooltypes  = ("file-reflink","lvm_thin")
 
 
+if __name__ == "__main__":
+    print(_program, flush=True)
+
+if sys.hexversion < 0x3080000:
+    x_it(1, "Python ver. 3.8 or greater required.")
+
+
 ##  RUN MAIN  ##
 
 if __name__ == "__main__":
 
-    print(_program, flush=True)     ; debug = "--debug" in sys.argv
-
     parser_defs.extend([
-     [["action"],    {"choices": ["create","backup","restore","verify","prune","delete","list"],
-                      "help": "Action to take"}],
+     [["action"],    {"choices": ["create","backup","restore","verify","prune","delete","list",
+                      "version"], "help": "Action to take"}],
      [["qubenames"], {"nargs": "*"}]])
 
     try:
         wq_context = WyngQubesContext(sys.argv[1:], stdin=sys.stdin)
 
         action = wq_context.action    ; options = wq_context.options
-        if action == "create":   x_it(0)
+        debug  = options.debug
+        if action in {"create", "version"}:   x_it(0)
 
         if not wq_context.wvolumemap.get(mvolname) and action not in ("create","backup"):
             x_it(1, "No Qubes backup sessions.")

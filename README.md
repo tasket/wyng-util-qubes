@@ -1,18 +1,24 @@
 ## __wyng-util-qubes__
 
-A wrapper for the [Wyng](https://github.com/tasket/wyng-backup) backup system that saves and
+A wrapper for the [Wyng](https://codeberg.org/tasket/wyng-backup) backup system that saves and
 restores both data and settings for Qubes VMs.
+
+<table style="border-style:none; padding:0px;">
+    <tr vertical-align="center" style="border-style:none;">
+        <td align="center" style="border-style:none; width:50px"><img src="media/info1.svg" height=42 /></td>
+        <td style="border-style:none;"><b>Notice: wyng-util-qubes has moved to <a href="https://codeberg.org/tasket/wyng-util-qubes">Codeberg.org!</b></a></td>
+</tr></table>
 
 
 ### Requirements
 
 * Qubes OS 4.2 using thin-LVM, Btrfs or XFS local storage
-* [Wyng backup](https://github.com/tasket/wyng-backup) v0.8beta 20250215 or later
+* [Wyng backup](https://codeberg.org/tasket/wyng-backup) v0.8beta 20250708 or later
 
 
 ### Installation quick start
 
-See [here](https://github.com/tasket/wyng-backup?tab=readme-ov-file#verifying-code) for instructions on verifying downloaded code with git.  Placing `wyng` and
+See [here](https://codeberg.org/tasket/wyng-backup?tab=readme-ov-file#verifying-code) for instructions on verifying downloaded code with git.  Placing `wyng` and
 `wyng-util-qubes` together in the same directory ensures that the util can find & run Wyng; in the
 example below _/usr/local/bin_ is used, but you can choose a different location.
 
@@ -56,6 +62,7 @@ verify             | Verify archive data integrity
 prune              | Remove older backup sessions from archive
 delete             | Remove VMs from the Wyng archive
 list               | Show contents of archive
+version            | Show program version
 
 
 ### Parameters/Options summary
@@ -78,6 +85,7 @@ list               | Show contents of archive
 --no-snapshot-restore  | Don't restore from local snapshots (restore)
 --no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
 --remap                | Auto-remap LVM snapshots to current archive (backup)
+--force-incomplete     | Restore template/standalone VM if a volume is missing
 --unattended, -u       | Operate without prompts.
 --meta-dir=_path_      | Use a different metadata dir than the default.
 --wyng=_path_          | Alternate path to Wyng executable
@@ -246,7 +254,7 @@ VMs with matching names _will be overwritten._
 
 ### Python API
 
-`wyng-util-qubes` may also be imported and used as a module in Python. See [issue #37](https://github.com/tasket/wyng-util-qubes/issues/37) for details on module usage.
+`wyng-util-qubes` may also be imported and used as a module in Python. See [issue #37](https://codeberg.org/tasket/wyng-util-qubes/issues/37) for details on module usage.
 
 ### License and Warranty
 GPLv3 License.
@@ -263,21 +271,6 @@ Warranty:  None.  Use at your own risk!
 2025-03-31: v0.9beta Python API & restore from snapshot
 
 2024-04-24: v0.9beta Support reflink (i.e. Btrfs, XFS) in addition to lvmthin.
-
-2024-03-30: v0.8beta Ease of use update.
-
-2023-07-19: v0.7beta Works with Wyng v0.8beta.
-
-2023-02-10: v0.4b Beta. Adds option passthrough and delete command.
-
-2023-02-03: v0.4a Adds verify & prune commands plus selection options for vms and sessions
-
-2023-01-28: v0.2a Alpha. Adds list command plus more detailed handling of metadata, session and passphrase options for Wyng 0.4a.
-
-2023-01-20: v0.1b Beta. Removes/resets a setting in existing VM when setting is not in the backup.
-
-2023-01-19: v0.1a Initial alpha
-
 
 
 ### Donations
