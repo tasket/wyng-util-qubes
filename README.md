@@ -76,12 +76,14 @@ version            | Show program version
 --session=_date-time[,date-time]_ | Select a session or session range by date-time or tag (restore, list, prune).
 --all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
+--check-after-send     | Check data integrity of the newly-created backup session (backup)
 --autoprune=_<off\|on\|full\>_  | Automatic pruning. See Wyng docs for details.
 --pool=_qubespool_     | Override default Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --pref=_pspec_         | Skip or override VM prefs (restore)
 --include-disposable=_<off\|on\>_ | Include disposable VMs (restore, list)
 --authmin=_N_          | Retain authentication for _N_ minutes
+--no-qubes-post        | Don't run Qubes post-processing after restore
 --no-snapshot-restore  | Don't restore from local snapshots (restore)
 --no-auto-rename       | Don't rename volumes between LVM <-> Reflink formats (backup)
 --remap                | Auto-remap LVM snapshots to current archive (backup)

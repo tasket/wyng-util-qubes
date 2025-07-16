@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 wip rel 20250710"
+_program = "Wyng-util-qubes v0.9 beta rel 20250713"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -95,8 +95,8 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
     jdata = json.loads(j[j.find('\n{'):])
 
     if jdata["wversion"][:3] != "0.8" \
-    or "wdate" not in jdata or jdata["wdate"] < "20250215":
-        raise RuntimeError("Wyng v0.8 release 20250215 or later is required.")
+    or "wdate" not in jdata or jdata["wdate"] < "20250708":
+        raise RuntimeError("Wyng v0.8 release 20250708 or later is required.")
 
 
     for volname, sname, ses in ((vk, sk[2:], sv) for vk, vv in jdata["volumes"].items()
@@ -192,7 +192,7 @@ def handle_wyng_error(ctx, p, errfile=None):
 
 def run(cmd, check=True, capt=True, **kwargs):
     capt   = capt and not ("stderr" in kwargs or "stdout" in kwargs)
-    if debug:   print(cmd)
+    if debug:   print("\nRun:\n", cmd)
     result = subprocess.run(cmd, capture_output=capt, check=False, text=True, **kwargs)
     if check and result.returncode:
         text = f"Error code {result.returncode}" \
@@ -282,6 +282,7 @@ def _do_backup(ctx, selected=None):
         " | tar -czf " +ctx.tarpath+ " --verbatim-files-from -T -", shell=True)
 
     # Start Wyng backup with selected VM volumes and import of the metadata tar
+    if debug:   print("\nvols.lst:\n", json.dumps(pool_vols))
     json.dump(pool_vols, open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w"))
 
     w_options.extend(["--local-from=" + jsontmp, "--tag=qubes", "--send-unchanged"])
@@ -289,7 +290,6 @@ def _do_backup(ctx, selected=None):
     if options.remap:      w_options.append("--remap")
     if options.dedup:      w_options.append("-d")
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{ctx.tarpath}", "send"]
-
     p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr, check=False)
 
     if p.returncode:
@@ -306,6 +306,13 @@ def _do_backup(ctx, selected=None):
             continue
         if "disp-created-by-dom0" in vm.tags:   continue
         vm.backup_timestamp = ts
+
+    if options.check_after_send:
+        wyng_cmd = ctx.w_options + ["--session=newest", "arch-check"]
+        p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr, check=False)
+
+        if p.returncode:
+            handle_wyng_error(ctx, p) #### , errfile=jsontmp+".error")
 
 
 def _do_restore(ctx, selected=None, session=None):
@@ -490,9 +497,9 @@ def _do_restore(ctx, selected=None, session=None):
             for dev in devlist:   busobj.detach(dev)
         for bus in qube.devices:
             for backend_domain, ident in qube.devices[bus]:
-                options = qube.devices[bus][(backend_domain, ident)]
                 assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
-                                                    ident=ident, options=options, persistent=True)
+                                                options=qube.devices[bus][(backend_domain, ident)],
+                                                ident=ident, persistent=True)
                 try:
                     vm.devices[bus].attach(assignment)
                 except Exception as err:
@@ -515,7 +522,7 @@ def _do_restore(ctx, selected=None, session=None):
         if "backup-restore-in-progress" in vm.tags and target not in err_domains:
             vm.tags.remove("backup-restore-in-progress")
 
-        if vm.klass in ("TemplateVM","StandaloneVM"):
+        if vm.klass in ("TemplateVM","StandaloneVM") and not options.no_qubes_post:
             print(" Running qvm-sync-appmenus for", vm.name)
             try:
                 vm.start(); run(["sudo", "-u", "#1000", "qvm-sync-appmenus", vm.name], check=False)
@@ -785,6 +792,8 @@ parser_defs = [
                          "help": "Select VMs marked 'include in backups' (backup)"}],
  [["--exclude"],      {"action": "append", "default": [],
                        "help": "VM name to exclude. (backup)"}],
+ [["--check-after-send"], {"action": "store_true", "default": False,
+                       "help": "Check newly-created backup session (backup)"}],
  [["--autoprune"],    {"help": "Automatic pruning: off/on/full. (backup, prune)"}],
  [["--all-before"],   {"action": "store_true", "default": False,
                        "help": "Select all sessions before --session date-time."}],
@@ -802,6 +811,8 @@ parser_defs = [
                        "help": "Don't restore from local snapshots (restore)"}],
  [["--no-auto-rename"], {"action": "store_true", "default": False,
                        "help": "Don't rename archived volumes for LVM or Reflink (backup)"}],
+ [["--no-qubes-post"], {"action": "store_true", "default": False,
+                       "help": "Don't run Qubes post-processing after restore"}],
  [["--include-disposable"], {"choices": ("off","on"), "default": "off",
                        "help": "Include disposable VMs (restore, list)"}],
  [["--remap"],        {"action": "store_true", "default": False,
