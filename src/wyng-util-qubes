@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250714"
+_program = "Wyng-util-qubes v0.9 beta rel 20250720"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -95,7 +95,7 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
     jdata = json.loads(j[j.find('\n{'):])
 
     if jdata["wversion"][:3] != "0.8" \
-    or "wdate" not in jdata or jdata["wdate"] < "20250708":
+    or "wdate" not in jdata or jdata["wdate"] < "20250720":
         raise RuntimeError("Wyng v0.8 release 20250708 or later is required.")
 
 
@@ -286,8 +286,7 @@ def _do_backup(ctx, selected=None):
     json.dump(pool_vols, open(jsontmp := ctx.tmpdir+"/wuq_vols.lst", "w"))
 
     w_options.extend(["--local-from=" + jsontmp, "--tag=qubes", "--send-unchanged"])
-    if options.autoprune: # w_options.append("--autoprune="+options.autoprune)
-        print("\n** autoprune has been temporarily disabled.")
+    if options.autoprune:  w_options.append("--autoprune="+options.autoprune)
     if options.remap:      w_options.append("--remap")
     if options.dedup:      w_options.append("-d")
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{ctx.tarpath}", "send"]
@@ -308,7 +307,7 @@ def _do_backup(ctx, selected=None):
         if "disp-created-by-dom0" in vm.tags:   continue
         vm.backup_timestamp = ts
 
-    if options.check_after_send and not p.returncode:
+    if options.check_after_send:
         wyng_cmd = ctx.w_options + ["--session=newest", "arch-check"]
         p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr, check=False)
 
@@ -593,11 +592,8 @@ def _do_prune(ctx, selected=None, session=None):
     w_options = ctx.w_options[:]    ; options = ctx.options
     selected  = selected or ctx.selected
 
-    if options.autoprune:
-        print("\n** autoprune has been temporarily disabled.")
-
-    if not (session := session or options.session): #### and not options.autoprune:
-        raise SelectionError("Please specify a session.") ####, an autoprune mode or both.")
+    if not (session := session or options.session) and not options.autoprune:
+        raise SelectionError("Please specify a session, an autoprune mode or both.")
 
     lvolumes = { vol for vm, ses_d in ctx.qube_wvolmap.items()
                         for ses, vlst in ses_d.items()
@@ -606,7 +602,7 @@ def _do_prune(ctx, selected=None, session=None):
     if session: w_options.append("--session="+session)
     if options.all: w_options.append("--all")
     if options.all_before: w_options.append("--all-before")
-    #if options.autoprune: w_options.append("--autoprune="+options.autoprune)
+    if options.autoprune: w_options.append("--autoprune="+options.autoprune)
 
     wyng_cmd = w_options + ["prune"] + list(lvolumes)
     run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)

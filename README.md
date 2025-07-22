@@ -77,7 +77,7 @@ version            | Show program version
 --all                  | Show all VM names and backup sessions (list)
 --all-before           | Select all sessions before the specified _--session date-time_ (prune).
 --check-after-send     | Check data integrity of the newly-created backup session (backup)
---autoprune=_<off\|on\|full\>_  | Automatic pruning**. See Wyng docs for details.
+--autoprune=_<off\|on\|full\>_  | Automatic pruning. See Wyng docs for details.
 --pool=_qubespool_     | Override default Qubes local storage pool. (restore)
 --pool-info            | Show local disk storage (list)
 --pref=_pspec_         | Skip or override VM prefs (restore)
@@ -219,10 +219,6 @@ the specified pref instead of trying to set it.  This can be used as a workaroun
 `restore` to complete when an
 archived VM setting isn't compatible with the current system configuration.
 
-#### --autoprune
-
-** Note that autoprune mode is temporarily disabled in wyng-util-qubes as volumes were pruned individually which could cause Standalone and Template VMs to become un-restorable from some sessions.
-
 
 ### Notes
 
@@ -269,6 +265,8 @@ Warranty:  None.  Use at your own risk!
 
 
 ### History
+
+2025-06-21: v0.9beta(6) Add check-after-send, force-incomplete and no-qubes-post options; minor fixes
 
 2025-06-21: v0.9beta(5) Improved error handling; support Qubes notes.txt; safer extraction
 
