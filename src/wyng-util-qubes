@@ -507,7 +507,7 @@ def _do_restore(ctx, selected=None, session=None):
         for bus in qube.devices:
             for backend_domain, ident in qube.devices[bus]:
                 try:
-                    if debug:   print("assign %s device: %s, %s", (bus, backend_domain, ident))
+                    if debug:   print("assign %s device: %s, %s" % (bus, backend_domain, ident))
                     assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
                                                 options=qube.devices[bus][(backend_domain, ident)],
                                                 ident=ident, persistent=True)
