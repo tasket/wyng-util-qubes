@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250720"
+_program = "Wyng-util-qubes v0.9 wip rel 20250721"
 
 import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -491,10 +491,17 @@ def _do_restore(ctx, selected=None, session=None):
                 print("Error removing feature %s.%s: %s" % (qube.name, prop, err))
                 err_domains.append(qube.name)
 
+        # clear the vm's device list before assignment
         for bus in vm.devices:
-            busobj  = vm.devices[bus]
-            devlist = list(busobj.assignments())
-            for dev in devlist:   busobj.detach(dev)
+            try:
+                busobj  = vm.devices[bus]
+                devlist = list(busobj.get_assigned_devices()) ####
+                for dev in devlist:   busobj.unassign(dev)
+            except Exception as err:
+                print("Error un-assigning device %s: %s" % (bus,err))
+                err_domains.append(qube.name)
+
+        # assign devices to vm
         for bus in qube.devices:
             for backend_domain, ident in qube.devices[bus]:
                 assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
@@ -503,7 +510,7 @@ def _do_restore(ctx, selected=None, session=None):
                 try:
                     vm.devices[bus].attach(assignment)
                 except Exception as err:
-                    print("Error attaching device %s:%s to %s: %s" % (bus,ident,qube.name,err))
+                    print("Error assigning device %s:%s to %s: %s" % (bus,ident,qube.name,err))
                     err_domains.append(qube.name)
 
         for tag in qube.tags:
