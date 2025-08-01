@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250730"
+_program = "Wyng-util-qubes v0.9 beta rel 20250731"
 
 import qubesadmin, signal, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -256,9 +256,9 @@ def _do_backup(ctx, selected=None):
     pool_vols = {}
 
     print("\nSelected for backup:\n", ", ".join(to_backup), flush=True)
-    for vmname in to_backup:
+    for vmname in to_backup[:]:
         if vmname == "dom0" or vmname not in live_qubes:
-            print("Skipping", vmname)    ; continue
+            print("Skipping", vmname)   ; to_backup.remove(vmname)   ; continue
 
         vm = live_qubes[vmname]
         if vm.klass == "DispVM":   continue
@@ -276,7 +276,7 @@ def _do_backup(ctx, selected=None):
             pool_vols.setdefault("/".join(ctx.qpools_d[vm.volumes[ii].pool].path),
                                  []).append((vn3, vn))
 
-    if not pool_vols:   raise SelectionError("Please supply a list of Qubes VMs to backup.")
+    if not to_backup:   raise SelectionError("Please supply a list of Qubes VMs to backup.")
 
     # Copy the Qubes metadata to a .tar
     os.chdir(qubesvar)    ; print()
@@ -342,7 +342,7 @@ def _do_restore(ctx, selected=None, session=None):
     # Match VM selections to backed-up volumes
     backups   = ctx.get_qubes_metadata(session)   ; opref = options.pref
     dispvms   = {x.name for x in backups.values() if x.klass=="DispVM"}
-    available = ((set(backups) - {"dom0"}) & ctx.wsessionqubes[session]) | dispvms
+    available = ((set(backups) - {"dom0"}) & ctx.wsessionqubes.get(session, set())) | dispvms
     templates = [x.name for x in backups.values() if x.klass=="TemplateVM" and x.name in available]
     appvms    = [x.name for x in backups.values() if x.klass!="DispVM" and x.name in available
                  and x.name not in templates]
@@ -407,9 +407,6 @@ def _do_restore(ctx, selected=None, session=None):
                                  (iy, get_vm_volname(live_qubes[target], ix)[0]) )
 
     selected = [x for x in selected if x not in err_domains]
-    # # if any((x.properties.get("template_for_dispvms") in {"True"} for x in backups.values()
-    # #         if x.name in selected)):
-    # #     print("Warning:  DispVMs based on restored disp. templates will be shut down.")
 
     if not options.unattended and (set(selected) & set(live_qubes.keys())):
         print("\nWarning:  Restoring to existing VMs will overwrite them...")
@@ -440,9 +437,6 @@ def _do_restore(ctx, selected=None, session=None):
 
         # Shutdown relevant vms, incl dvms that are based on dvm template
         if not vm.is_halted():   vm.shutdown(force=True)
-        # # for dvm in (x for x in live_qubes.values() if x.klass=="DispVM" and not x.is_halted
-        # #            and qube.properties.get("template_for_dispvms") and x.template == qube.name):
-        # #     dvm.shutdown(force=True)
 
         # Restore nested xml and notes files
         for varfile in ("firewall.xml", "notes.txt"):
