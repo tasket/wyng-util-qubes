@@ -5,9 +5,9 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 wip rel 20250722"
+_program = "Wyng-util-qubes v0.9 beta rel 20250730"
 
-import qubesadmin, sys, os, shutil, subprocess, argparse, json, tempfile
+import qubesadmin, signal, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
 from qubesadmin.backup.core3 import Core3Qubes
 from subprocess import CalledProcessError
@@ -50,9 +50,9 @@ class QubesPool:
 
 
 # Get Qubes storage pools
-def get_pools(qadmin):
+def get_pools():
     pools = {}
-    for qpool in qadmin.pools.values():
+    for qpool in qubesadmin.Qubes().app.pools.values():
         if qpool.driver == "lvm_thin":
             path = (qpool.config['volume_group'], qpool.config['thin_pool'])
         elif qpool.driver == "file-reflink":
@@ -187,7 +187,8 @@ def handle_wyng_error(ctx, p, errfile=None):
     elif rc in (5,6,7):
         raise StorageError(rc, ((p.stdout or "") + "\n" + (p.stderr or "")).strip())
     elif rc:
-        raise WyngError(((p.stdout or "") + "\n" + (p.stderr or "")).strip(), p)
+        list(err_out("\n"+x.strip()) for x in (p.stdout, p.stderr) if x)
+        raise WyngError("Failed return code "+str(rc), p)
 
 
 def run(cmd, check=True, capt=True, **kwargs):
@@ -247,7 +248,8 @@ def _do_create(ctx, passphrase=None):
 
 def _do_backup(ctx, selected=None):
 
-    w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qadmin.domains
+    w_options = ctx.w_options[:]    ; options = ctx.options
+    live_qubes= qubesadmin.Qubes().app.domains
     includes  = [x.name for x in live_qubes if x.include_in_backups and options.includes
                  and x.name not in options.exclude]
     to_backup = sorted(set(selected+includes))
@@ -289,8 +291,11 @@ def _do_backup(ctx, selected=None):
     if options.autoprune:  w_options.append("--autoprune="+options.autoprune)
     if options.remap:      w_options.append("--remap")
     if options.dedup:      w_options.append("-d")
+
+    catch_signals()
     wyng_cmd = w_options + [f"--import-other-from={mvolname}:|:{ctx.tarpath}", "send"]
     p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr, check=False)
+    catch_signals(stop=True)
 
     if p.returncode:
         handle_wyng_error(ctx, p, errfile=jsontmp+".error")
@@ -312,12 +317,12 @@ def _do_backup(ctx, selected=None):
         p = run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr, check=False)
 
         if p.returncode:
-            handle_wyng_error(ctx, p) #### , errfile=jsontmp+".error")
+            handle_wyng_error(ctx, p)
 
 
 def _do_restore(ctx, selected=None, session=None):
 
-    w_options = ctx.w_options[:]    ; options = ctx.options    ; live_qubes = ctx.qadmin.domains
+    w_options = ctx.w_options[:]    ; options = ctx.options
     err_domains = ctx.err_domains   ; selected = selected or ctx.selected
 
     if not (session := session or options.session):
@@ -364,6 +369,7 @@ def _do_restore(ctx, selected=None, session=None):
     # + {y[0]: y[2] for x in opref if len(y := x.split("::", maxsplit=2))==3 and y[1]=="s"}
 
     os.chdir(ctx.tmpdir)   ; pool_vols = {}
+    qadmin = qubesadmin.Qubes().app   ; live_qubes = qadmin.domains
 
     for target in selected:
         qube = backups[target]
@@ -383,8 +389,8 @@ def _do_restore(ctx, selected=None, session=None):
                     continue
             setattr(vm, "label", qube.label)
         else:
-            vm = ctx.qadmin.add_new_vm(qube.klass, label=qube.label, name=target,
-                                       pool=options.pool)
+            vm = qadmin.add_new_vm(qube.klass, label=qube.label, name=target,
+                                   pool=options.pool)
             vm.tags.add("backup-restore-in-progress")
 
         if vm.klass == "DispVM":   continue
@@ -401,12 +407,13 @@ def _do_restore(ctx, selected=None, session=None):
                                  (iy, get_vm_volname(live_qubes[target], ix)[0]) )
 
     selected = [x for x in selected if x not in err_domains]
-    if any((x.properties.get("template_for_dispvms") in {"True"} for x in backups.values()
-            if x.name in selected)):
-        print("Warning:  DispVMs based on restored disp. templates will be shut down.")
+    # # if any((x.properties.get("template_for_dispvms") in {"True"} for x in backups.values()
+    # #         if x.name in selected)):
+    # #     print("Warning:  DispVMs based on restored disp. templates will be shut down.")
 
-    if not options.unattended and (set(selected) & set(live_qubes)):
-        print("Warning:  Restoring to existing VMs will overwrite them.")
+    if not options.unattended and (set(selected) & set(live_qubes.keys())):
+        print("\nWarning:  Restoring to existing VMs will overwrite them...")
+        print("", ", ".join(set(selected) & set(live_qubes.keys())))
         if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
 
     # Restore data volumes
@@ -433,9 +440,9 @@ def _do_restore(ctx, selected=None, session=None):
 
         # Shutdown relevant vms, incl dvms that are based on dvm template
         if not vm.is_halted():   vm.shutdown(force=True)
-        for dvm in (x for x in live_qubes.values() if x.klass=="DispVM" and not x.is_halted
-                   and qube.properties.get("template_for_dispvms") and x.template == qube.name):
-            dvm.shutdown(force=True)
+        # # for dvm in (x for x in live_qubes.values() if x.klass=="DispVM" and not x.is_halted
+        # #            and qube.properties.get("template_for_dispvms") and x.template == qube.name):
+        # #     dvm.shutdown(force=True)
 
         # Restore nested xml and notes files
         for varfile in ("firewall.xml", "notes.txt"):
@@ -614,8 +621,10 @@ def _do_prune(ctx, selected=None, session=None):
     if options.all_before: w_options.append("--all-before")
     if options.autoprune: w_options.append("--autoprune="+options.autoprune)
 
+    catch_signals()
     wyng_cmd = w_options + ["prune"] + list(lvolumes)
     run(wyng_cmd, stdout=sys.stdout, stderr=sys.stderr)
+    catch_signals(stop=True)
 
 
 def _do_delete(ctx, selected=None):
@@ -705,6 +714,22 @@ def show_list(ctx, selected=None, session=None):
     print()
 
 
+def catch_signals(stop=False, iflag=False, ign=True):
+    if __name__ != "__main__":   return
+    # Set handler on requested signals
+    h = signal.SIG_DFL if stop else handle_signal    ; s = getattr(signal,"SIGINT")
+    signal.signal(s, h)    ; signal.siginterrupt(s, iflag)
+
+    while stop and signals_caught:
+        s = signals_caught.pop(0)
+        if not ign:   os.kill(os.getpid(), s)
+
+
+def handle_signal(signum, frame):
+    if signum not in signals_caught:   signals_caught.append(signum)
+    if debug:   err_out(" *** Caught signal "+str(signum))
+
+
 ##  API for wyng-util-qubes: Wyng backup system on Qubes OS  ##
 
 #   Instantiate WyngQubesContext() with a sys.argv style list of wyng-util-qubes options.
@@ -735,9 +760,7 @@ class WyngQubesContext:
         elif self.action == "version":
             return
 
-        self.qadmin     = qadmin = qubesadmin.Qubes().app
-        self.qpools_d   = get_pools(qadmin)
-
+        self.qpools_d   = get_pools()
         self.mappings   = get_wyng_directory(self, stdin=stdin, passphrase=passphrase)
         for x,y in zip(("arch_mdata","wvolsessionmap","wvolumemap","wvolqubemap","wsessionqubes",
                         "wsessiontags","qube_wvolmap","q_wpriv_wrootmap"), self.mappings):
@@ -836,7 +859,7 @@ parser_defs = [
 ]
 
 
-debug      = False
+debug      = False    ; signals_caught = []
 columns    = max(4, min(10, shutil.get_terminal_size().columns // 17))
 thispath   = os.path.dirname(os.path.realpath(__file__))
 qubesvar   = "/var/lib/qubes/"         ; qubesxml   = "qubes.xml"
@@ -877,7 +900,7 @@ if __name__ == "__main__":
         elif action == "list":       show_list(wq_context)
 
     except WyngError as e:
-        x_it(10, "Wyng::"+e.args[0], err=e.args[1])
+        x_it(e.args[1].returncode, "Wyng::"+e.args[0], err=e.args[1])
 
     except (SelectionError, OptionError, InputError) as e:
         x_it(9, f"\n{e.__class__.__name__}: {e.args[0]}\n", err=e)
