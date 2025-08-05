@@ -266,9 +266,11 @@ Warranty:  None.  Use at your own risk!
 
 ### History
 
-2025-06-21: v0.9beta(6) Add check-after-send, force-incomplete and no-qubes-post options; minor fixes
+2025-07-31: v0.9beta7 Improve handling of dispvms, errors and interruptions; fix overwrite warnings
 
-2025-06-21: v0.9beta(5) Improved error handling; support Qubes notes.txt; safer extraction
+2025-06-21: v0.9beta6 Add check-after-send, force-incomplete and no-qubes-post options; minor fixes
+
+2025-06-21: v0.9beta5 Improved error handling; support Qubes notes.txt; safer extraction
 
 2025-05-10: v0.9beta Minor fixes & options (Wyng path, remap)
 
