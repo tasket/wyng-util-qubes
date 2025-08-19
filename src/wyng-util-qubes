@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250731"
+_program = "Wyng-util-qubes v0.9 beta rel 20250816"
 
 import qubesadmin, signal, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -306,11 +306,11 @@ def _do_backup(ctx, selected=None):
                     and x != "dom0" and x not in ctx.err_domains):
         try:
             vm = live_qubes[vmname]
+            if "disp-created-by-dom0" in vm.tags:   continue
+            vm.backup_timestamp = ts
         except:
             if debug:   print("Skip timestamp:", vmname)
             continue
-        if "disp-created-by-dom0" in vm.tags:   continue
-        vm.backup_timestamp = ts
 
     if options.check_after_send:
         wyng_cmd = ctx.w_options + ["--session=newest", "arch-check"]
@@ -324,6 +324,7 @@ def _do_restore(ctx, selected=None, session=None):
 
     w_options = ctx.w_options[:]    ; options = ctx.options
     err_domains = ctx.err_domains   ; selected = selected or ctx.selected
+    oldqver = ctx.get_qubes_version()[:2] < (4,3)   ; DevAssg = qubesadmin.devices.DeviceAssignment
 
     if not (session := session or options.session):
         if not selected:
@@ -371,6 +372,11 @@ def _do_restore(ctx, selected=None, session=None):
     os.chdir(ctx.tmpdir)   ; pool_vols = {}
     qadmin = qubesadmin.Qubes().app   ; live_qubes = qadmin.domains
 
+    if not options.unattended and (set(selected) & set(live_qubes.keys())):
+        print("\nWarning:  Restoring to existing VMs will overwrite them...")
+        print("", ", ".join(set(selected) & set(live_qubes.keys())))
+        if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
+
     for target in selected:
         qube = backups[target]
 
@@ -408,11 +414,6 @@ def _do_restore(ctx, selected=None, session=None):
 
     selected = [x for x in selected if x not in err_domains]
 
-    if not options.unattended and (set(selected) & set(live_qubes.keys())):
-        print("\nWarning:  Restoring to existing VMs will overwrite them...")
-        print("", ", ".join(set(selected) & set(live_qubes.keys())))
-        if input("Continue [y/N]? ").lower() not in ("y","yes"):   sys.exit(0)
-
     # Restore data volumes
     if pool_vols:
         print("\nRestoring VM data volumes:", flush=True)
@@ -428,6 +429,7 @@ def _do_restore(ctx, selected=None, session=None):
     # Selectively restore qube properties
     # Remove or reset properties that are not in the backup metadata
     if selected:   print("\nRestoring VM settings:")
+
     for target in selected:
         if target in err_domains:   continue
         print(" "+target, flush=True)
@@ -493,26 +495,41 @@ def _do_restore(ctx, selected=None, session=None):
                 err_domains.append(qube.name)
 
         # clear the vm's device list before assignment
-        for bus in vm.devices:
+        for bname in vm.devices:
             try:
-                busobj  = vm.devices[bus]
-                devlist = list(busobj.assignments())
+                bus     = vm.devices[bname] # devicecollection
+                devlist = list(bus.assignments() if oldqver else bus.get_assigned_devices())
                 for dev in devlist:
-                    if debug:   print("detach device:", bus, dev)
-                    busobj.detach(dev)
+                    if debug:   print("detach device:", bname, dev)
+                    if oldqver:
+                        try:      bus.update_persistent(dev, False)
+                        except:   pass
+                        bus.detach(dev)
+                    else:
+                        bus.unassign(dev)
             except Exception as err:
-                print("Error un-assigning %s device: %s" % (bus,err))
+                print("Error un-assigning %s device: %s" % (bname,err))
                 err_domains.append(qube.name)
 
         # assign devices to vm
         for bus in qube.devices:
-            for backend_domain, ident in qube.devices[bus]:
+            for backend, ident in qube.devices[bus]:
+                if debug:   print("assign %s device: %s, %s" % (bus, backend, ident))
+                devopts = qube.devices[bus][(backend, ident)]
+                if oldqver:
+                    assig = DevAssg(backend_domain=backend, options=devopts,
+                                    ident=ident, persistent=True)
+                else:
+                    if 'required' in devopts:
+                        required = devopts['required']    ; del devopts['required']
+                    else:
+                        required = False
+                    assig = DevAssg.new(backend_domain=live_qubes[backend], port_id=ident,
+                                        devclass=bus, device_id=None, options=devopts,
+                                        mode='required' if required else 'auto-attach')
                 try:
-                    if debug:   print("assign %s device: %s, %s" % (bus, backend_domain, ident))
-                    assignment = qubesadmin.devices.DeviceAssignment(backend_domain=backend_domain,
-                                                options=qube.devices[bus][(backend_domain, ident)],
-                                                ident=ident, persistent=True)
-                    vm.devices[bus].attach(assignment)
+                    if oldqver:   vm.devices[bus].attach(assig)
+                    else:         vm.devices[bus].assign(assig)
                 except Exception as err:
                     print("Error assigning device %s:%s to %s: %s" % (bus,ident,qube.name,err))
                     err_domains.append(qube.name)
@@ -778,6 +795,12 @@ class WyngQubesContext:
         result   = run(tar_cmd, cwd=self.tmpdir+"/qmd", check=True)
 
         return Core3Qubes(self.tmpdir+"/qmd/"+qubesxml).domains
+
+    def get_qubes_version(self):
+        version = None
+        for ln in open("/etc/os-release"):
+            if ln.startswith("VERSION_ID="):   version = ln.split("=")[-1]
+        return tuple(map(int, version.split(".")))
 
     def backup(self, vms=[]):
         res = _do_backup(self, vms or self.selected)   ; self.close()

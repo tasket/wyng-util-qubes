@@ -12,7 +12,7 @@ restores both data and settings for Qubes VMs.
 
 ### Requirements
 
-* Qubes OS 4.2 using thin-LVM, Btrfs or XFS local storage
+* Qubes OS 4.2 or 4.3 using thin-LVM or Btrfs local storage
 * [Wyng backup](https://codeberg.org/tasket/wyng-backup) v0.8beta 20250708 or later
 
 
@@ -137,7 +137,7 @@ with the `--include-disposable=on` option.
 
 `backup [vm names] [--includes] [--exclude=vmname] [--dedup] [--autoprune] `
 
-Backs up Qubes VMs to a Wyng archive.  A list of invdividual VM names may be specified, or
+Backs up Qubes VMs to a Wyng archive.  A list of individual VM names may be specified, or
 the `--includes` option may be used to include all VMs that are flagged in Qubes
 for automatic inclusion in backups.  The `--dedup` option will attempt to detect
 duplicate data chunks and reduce the amount of data sent to and disk space taken
@@ -149,7 +149,9 @@ details.
 
 Restores VMs from a Wyng archive into a Qubes system.  VM names and/or a _session_ (containing
 one or more VMs) may be specified.  If a session is not specified, the last session will be
-auto-selected; if only a session is specified, all of the VMs in the session will be selected.
+auto-selected; if only a session is specified, all of the non-disposable VMs in the session will be selected.
+
+(If errors are encountered while restoring specific VMs, the affected VMs will be left with a system tag that prevents them from starting.  The tag can be cleared manually with the dom0 command `qvm-tags <vmname> del backup-restore-in-progress`.)
 
 #### verify
 `verify [vm names] [--session=YYYYMMDD-HHMMSS] [--exclude=vmname]`
@@ -161,7 +163,7 @@ all VMs in that session.
 `prune [vm names] [--session=YYYYMMDD-HHMMSS[,YYYYMMDD-HHMMSS]] [--all] [--autoprune=<off|on|full>]`
 
 Removes older backup sessions from the archive to reclaim space. The latest session
-cannot be selected for removal. If an entire session is to be removed, `--all` (refering
+cannot be selected for removal. If an entire session is to be removed, `--all` (referring
 to all volumes) must be specified with `--session`, otherwise VM names may be used to limit
 pruning to those VMs. The session may also be a date-time range
 with the start and end separated by a comma.
@@ -234,7 +236,7 @@ templates as the user originally intended.  Since users' security expectations, 
 configuration are likely to hinge on VM names, `wyng-util-qubes` addresses a security risk posed by
 Qubes' built-in tools.
 
-Disposable VMs: Since dispVMs do not have their own physical storage, they exist only in the Qubes XML metata which is always backed up in its entirety.  This means all dispVMs are included in each backup session.  However, `wyng-util-qubes` cannot see all versions of this XML data at any given time, so it cannot list dispVMs without giving a specific `--session` ID, and it cannot delete dispVMs.
+Disposable VMs: Since dispVMs do not have their own physical storage, they exist only in the Qubes XML metadata which is always backed up in its entirety.  This means all dispVMs are included in each backup session.  However, `wyng-util-qubes` cannot see all versions of this XML data at any given time, so it cannot list dispVMs without giving a specific `--session` ID, and it cannot delete dispVMs.
 
 For each qube/VM, the private and/or root volumes are automatically backed up and restored depending on the type of VM,
 and a 'wyng-qubes-metadata' volume will always be added to the backup session as well.
@@ -243,16 +245,19 @@ By default, only backup sessions which include this metadata volume will be acce
 the metadata needed to make them accessible from `wyng-util-qubes` (the volumes can of course
 still be accessed with `wyng`).
 
-When a system relies on the QubesOS default of Thin LVM there is an avoidable cause of pool metadata space exhaustion, a condition that can cause your system storage to go offline or become corrupted. Since Wyng adds its own snapshots on top of Qubes snapshots, using Wyng adds a bit more demand for Thin LVM metadata. The answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. 3X as large as the original default is a good choice to avoid excess space consumption.
+When a system uses the Qubes OS default of Thin LVM storage there is an avoidable cause of pool metadata space exhaustion, a condition that can cause your system storage to go offline or become corrupted. Since Wyng adds its own snapshots on top of Qubes snapshots, using Wyng adds a bit more demand for Thin LVM metadata. The answer to this is almost always to increase the qubes-dom0/vm-pool metadata size with `sudo lvextend --poolmetadatasize`. Qubes has recently addressed this by increasing the metadata size somewhat during installation, however based on observations it may be optimal to increase this amount by a further 50-100%. Periodically running `wyng monitor` can also reduce metadata use.
 
-Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here the metadata stress manifests as a slowdown of system operations.  This can be avoided by periodically defragmenting your Btrfs Qubes storage pools like so: `sudo btrfs filesystem defrag -fr -t256K /var/lib/qubes` approximately once per week or month, depending on how active your system is.  This is good to do any time you are intensively using large disk image files on Btrfs where the default _datacow_ capability remains enabled.
+Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here the metadata fragmentation stress manifests as a noticeable slowdown of system operations.  This can be avoided by periodically defragmenting your Btrfs Qubes storage pools like so: `sudo btrfs filesystem defrag -fr -t256K /var/lib/qubes` approximately once per week or month, depending on how active your system is. Periodically running `wyng monitor` can also reduce metadata use.
 
 
-### Limitations
+### Limitations & Known Issues
 
-Apart from data, which is restored verbatim, restoration of VM settings may be imperfect.  There is currently
-no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing
-VMs with matching names _will be overwritten._
+* Apart from data, which is restored verbatim, restoration of VM settings may be imperfect.  There is currently no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing VMs with matching names _will be overwritten._
+
+* A [bug](https://github.com/QubesOS/qubes-issues/issues/10097) in Qubes OS 4.3 is currently preventing full restoration of a VM's device assignments. This doesn't affect restoration on Qubes OS 4.2.
+
+* DispVMs will not appear in `list` output and cannot be selected for `restore` and `verify` unless a specific `--session` is selected.
+
 
 ### Python API
 
