@@ -271,7 +271,7 @@ Warranty:  None.  Use at your own risk!
 
 ### History
 
-2025-07-31: v0.9beta8 Add Qubes 4.3 support, fix overwrite prompt and dispvm tag error
+2025-08-16: v0.9beta8 Add Qubes 4.3 support, fix overwrite prompt and dispvm tag error
 
 2025-07-31: v0.9beta7 Improve handling of dispvms, errors and interruptions; fix overwrite warnings
 
