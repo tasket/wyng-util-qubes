@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250816"
+_program = "Wyng-util-qubes v0.9 beta rel 20250817"
 
 import qubesadmin, signal, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -422,7 +422,7 @@ def _do_restore(ctx, selected=None, session=None):
         if options.verbose or not options.unattended:   w_options.append("--verbose")
         wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
                                 "--session="+session]
-        if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
+        ## if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
         p = run(wyng_cmd + ["receive"], check=False, stdout=sys.stdout, stderr=sys.stderr)
         if p.returncode:   handle_wyng_error(ctx, p, errfile=jsontmp+".error")
 
