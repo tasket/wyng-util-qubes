@@ -115,10 +115,10 @@ The above examples show the creation and use of an archive named 'laptop3.backup
 the '/mnt/backups' path of the _sys-usb_ VM.  Other destination types may be used such as 'qubes-ssh://' for backing up to remote via an SSH-equipped VM...
 
 ```
-$ sudo wyng arch-init --dest=qubes-ssh://remote-vm:user@192.168.1.10/mnt/backups/laptop3.backup
+$ sudo wyng-util-qubes create --dest=qubes-ssh://remote-vm:user@192.168.1.10/mnt/backups/laptop3.backup
 ```
 See the _Options_ section for a description of all `--dest` types.
-
+<br/>
 
 ### Commands
 
@@ -174,7 +174,7 @@ See Wyng documentation for specifics on using `prune` and `--autoprune`.
 
 Deletes a VM from the archive. Only one VM may be specified at a time. To remove
 a _session_, see the `prune` command.
-
+<br/>
 
 ### Options
 
@@ -253,8 +253,6 @@ Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here 
 ### Limitations & Known Issues
 
 * Apart from data, which is restored verbatim, restoration of VM settings may be imperfect.  There is currently no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing VMs with matching names _will be overwritten._
-
-* A [bug](https://github.com/QubesOS/qubes-issues/issues/10097) in Qubes OS 4.3 is currently preventing full restoration of a VM's device assignments. This doesn't affect restoration on Qubes OS 4.2.
 
 * DispVMs will not appear in `list` output and cannot be selected for `restore` and `verify` unless a specific `--session` is selected.
 
