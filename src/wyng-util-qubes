@@ -5,7 +5,7 @@
 ###  Copyright Christopher Laprise 2025 / tasket@protonmail.com
 ###  Licensed under GNU General Public License v3. See file 'LICENSE'.
 
-_program = "Wyng-util-qubes v0.9 beta rel 20250817"
+_program = "Wyng-util-qubes v0.9 beta rel 20250820"
 
 import qubesadmin, signal, sys, os, shutil, subprocess, argparse, json, tempfile
 import time, datetime
@@ -95,8 +95,8 @@ def get_wyng_directory(ctx, stdin=None, passphrase=None):
     jdata = json.loads(j[j.find('\n{'):])
 
     if jdata["wversion"][:3] != "0.8" \
-    or "wdate" not in jdata or jdata["wdate"] < "20250720":
-        raise RuntimeError("Wyng v0.8 release 20250708 or later is required.")
+    or "wdate" not in jdata or jdata["wdate"] < "20250820":
+        raise RuntimeError("Wyng v0.8 release 20250820 or later is required.")
 
 
     for volname, sname, ses in ((vk, sk[2:], sv) for vk, vv in jdata["volumes"].items()
@@ -422,7 +422,7 @@ def _do_restore(ctx, selected=None, session=None):
         if options.verbose or not options.unattended:   w_options.append("--verbose")
         wyng_cmd = w_options + ["--force", "--sparse-write", "--local-from="+jsontmp,
                                 "--session="+session]
-        ## if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
+        if not options.no_snapshot_restore:   wyng_cmd += ["--use-snapshot"]
         p = run(wyng_cmd + ["receive"], check=False, stdout=sys.stdout, stderr=sys.stderr)
         if p.returncode:   handle_wyng_error(ctx, p, errfile=jsontmp+".error")
 
