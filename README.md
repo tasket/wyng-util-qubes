@@ -13,7 +13,7 @@ restores both data and settings for Qubes VMs.
 ### Requirements
 
 * Qubes OS 4.2 or 4.3 using thin-LVM or Btrfs local storage
-* [Wyng backup](https://codeberg.org/tasket/wyng-backup) v0.8beta 20250708 or later
+* [Wyng backup](https://codeberg.org/tasket/wyng-backup) v0.8beta 20250820 or later
 
 
 ### Installation quick start
@@ -23,19 +23,19 @@ See [here](https://codeberg.org/tasket/wyng-backup?tab=readme-ov-file#verifying-
 example below _/usr/local/bin_ is used, but you can choose a different location.
 
 ```
-[user@dom0 ~]$ sudo qubes-dom0-update python3-pycryptodomex python3-zstd
-[user@dom0 ~]$ sudo cp -a wyng-backup/src/wyng wyng-util-qubes/src/wyng-util-qubes /usr/local/bin
+ [user@dom0 ~]$ sudo qubes-dom0-update python3-pycryptodomex python3-zstd
+ [user@dom0 ~]$ sudo cp -a wyng-backup/src/wyng wyng-util-qubes/src/wyng-util-qubes /usr/local/bin
 ```
 If using `wyng-util-qubes` Python API, it can also be installed to a Python module path like so:
 ```
-[user@dom0 ~]$ sudo ln -s /usr/local/bin/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
+ [user@dom0 ~]$ sudo ln -s /usr/local/bin/wyng-util-qubes /usr/lib64/python3.11/site-packages/wyng_util_qubes.py
 ```
 
 #### Btrfs Storage
 If your Qubes storage pools are on Btrfs then you will need to convert any pool directories to Btrfs subvolumes before doing backups.  For the default Qubes Btrfs install, there is one pool dir to convert:
 ```
-qvm-shutdown --all --force
-sudo bash wyng-backup/misc/convert-dir-to-subvolume.sh /var/lib/qubes
+ qvm-shutdown --all --force
+ sudo bash wyng-backup/misc/convert-dir-to-subvolume.sh /var/lib/qubes
 ```
 
 ### Command usage
@@ -98,16 +98,16 @@ version            | Show program version
 
 ```
 
-$ # Start by creating a fresh Wyng archive:
-$ sudo wyng-util-qubes create --dest=qubes://sys-usb/mnt/backups/laptop3.backup
+ # Start by creating a fresh Wyng archive:
+ $ sudo wyng-util-qubes create --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 
-$ # Make wyng backups of the VMs _work_ and _personal_
-$ sudo wyng-util-qubes backup work personal --dest=qubes://sys-usb/mnt/backups/laptop3.backup
+ # Make wyng backups of the VMs 'work' and 'personal'
+ $ sudo wyng-util-qubes backup work personal --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 
-$ # Restore VM _personal_ from a wyng archive
-$ sudo wyng-util-qubes restore personal --dest=qubes://sys-usb/mnt/backups/laptop3.backup
+ # Restore VM 'personal' from a wyng archive
+ $ sudo wyng-util-qubes restore personal --dest=qubes://sys-usb/mnt/backups/laptop3.backup
 
 ```
 
@@ -115,7 +115,7 @@ The above examples show the creation and use of an archive named 'laptop3.backup
 the '/mnt/backups' path of the _sys-usb_ VM.  Other destination types may be used such as 'qubes-ssh://' for backing up to remote via an SSH-equipped VM...
 
 ```
-$ sudo wyng-util-qubes create --dest=qubes-ssh://remote-vm:user@192.168.1.10/mnt/backups/laptop3.backup
+ $ sudo wyng-util-qubes create --dest=qubes-ssh://remote-vm:user@192.168.1.10/mnt/backups/laptop3.backup
 ```
 See the _Options_ section for a description of all `--dest` types.
 <br/>
@@ -251,6 +251,8 @@ Likewise, Btrfs metadata can experience added stress from Wyng snapshots.  Here 
 
 
 ### Limitations & Known Issues
+
+* Versions of Wyng v0.8 older than _'20250820'_ may restore a volume incorrectly when older sessions are selected. See Wyng [issue](https://codeberg.org/tasket/wyng-backup/issues/260) 260 for details. Updating Wyng is strongly recommended and current versions of `wyng-util-qubes` will require a newer Wyng version.
 
 * Apart from data, which is restored verbatim, restoration of VM settings may be imperfect.  There is currently no way to ensure a complete match of settings in Qubes.  However, VM names are preserved and existing VMs with matching names _will be overwritten._
 
